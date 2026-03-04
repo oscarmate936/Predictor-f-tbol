@@ -195,3 +195,4 @@ if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
                 st.write(f"Over: {p[0]:.1f}% | Under: {p[1]:.1f}%")
                 st.progress(p[0]/100)
 
+

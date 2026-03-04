@@ -60,35 +60,28 @@ class MotorMatematico:
 # =================================================================
 st.set_page_config(page_title="ProStats Mobile", layout="centered")
 
-# Estilos CSS para mejorar la UI
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
     .stMetric { background-color: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .stButton>button { width: 100%; border-radius: 12px; height: 3em; background-color: #007bff; color: white; font-weight: bold; border: none; }
     .market-box { background-color: white; padding: 12px; border-radius: 12px; margin-bottom: 10px; border: 1px solid #eee; }
     .score-badge { background-color: #1e1e1e; color: #00ffcc; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-family: monospace; }
-    .percentage-text { font-size: 0.9em; color: #666; font-weight: bold; }
+    .label-market { font-size: 0.85em; color: #555; font-weight: bold; margin-bottom: -15px; }
     </style>
     """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='text-align: center; color: #1e1e1e;'>🎯 Ultimate Predictor</h1>", unsafe_allow_html=True)
-st.markdown("---")
 
-# CONFIGURACIÓN INICIAL
 with st.expander("⚙️ AJUSTES DE LIGA Y CUOTAS"):
     col_l1, col_l2 = st.columns([1, 1])
     p_liga = col_l1.number_input("Goles Promedio Liga", 2.5, step=0.1)
-    
     st.write("**Cuotas Actuales (Value Check)**")
     c1, cx, c2 = st.columns(3)
     o1 = c1.number_input("Local", 1.0, value=2.10)
     ox = cx.number_input("Empate", 1.0, value=3.20)
     o2 = c2.number_input("Visita", 1.0, value=3.50)
 
-# ENTRADA DE DATOS (2 COLUMNAS PARA MÓVIL)
 col_team1, col_team2 = st.columns(2)
-
 with col_team1:
     st.markdown("### 🏠 Local")
     nl = st.text_input("Equipo L", "Local", label_visibility="collapsed")
@@ -105,58 +98,34 @@ with col_team2:
     vtj = st.number_input("Tarjetas V", 2.2)
     vco = st.number_input("Corners V", 4.8)
 
-st.markdown("---")
-
 if st.button("🚀 REALIZAR ANÁLISIS"):
     motor = MotorMatematico()
-    # Cálculo de xG Proyectado
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
-    # 1. TOP MARCADORES (NUEVO)
     st.markdown("### 📊 Top 3 Marcadores Probables")
     cols_score = st.columns(3)
     for idx, (score, prob) in enumerate(res['TOP']):
         with cols_score[idx]:
-            st.markdown(f"""
-            <div style="text-align: center;" class="market-box">
-                <span class="score-badge">{score}</span><br>
-                <span style="font-size: 1.1em; font-weight: bold;">{prob:.1f}%</span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="text-align: center;" class="market-box"><span class="score-badge">{score}</span><br><span style="font-size: 1.1em; font-weight: bold;">{prob:.1f}%</span></div>', unsafe_allow_html=True)
 
-    # 2. SUGERENCIAS INTELIGENTES
-    picks = []
-    if res['DC'][0] > 78: picks.append(f"✅ 1X {nl}")
-    if res['DC'][1] > 78: picks.append(f"✅ X2 {nv}")
-    for l, p in res['GOLES'].items():
-        if p[0] > 78: picks.append(f"⚽ Over {l}")
-        if p[1] > 78: picks.append(f"🔒 Under {l}")
-    
-    if picks:
-        st.info(f"💡 **Recomendaciones Pro:** {' | '.join(picks[:3])}")
-
-    # 3. PROBABILIDADES PRINCIPALES (CON VALOR)
     st.markdown("### 🏆 Ganador del Partido (1X2)")
     m1, mx, m2 = st.columns(3)
-    
-    def get_value_tag(p, o):
-        return " (Value 🔥)" if (p/100*o) > 1.10 else ""
-
+    def get_value_tag(p, o): return " (Value 🔥)" if (p/100*o) > 1.10 else ""
     m1.metric(nl, f"{res['1X2'][0]:.1f}%", delta=get_value_tag(res['1X2'][0], o1), delta_color="normal")
     mx.metric("Empate", f"{res['1X2'][1]:.1f}%", delta=get_value_tag(res['1X2'][1], ox), delta_color="normal")
     m2.metric(nv, f"{res['1X2'][2]:.1f}%", delta=get_value_tag(res['1X2'][2], o2), delta_color="normal")
 
-    # 4. MERCADOS SECUNDARIOS CON BARRAS
     col_a, col_b = st.columns(2)
-    
     with col_a:
         st.markdown("**🎯 Doble Oportunidad**")
         st.write(f"1X: {res['DC'][0]:.1f}%")
         st.progress(res['DC'][0]/100)
         st.write(f"X2: {res['DC'][1]:.1f}%")
         st.progress(res['DC'][1]/100)
+        st.write(f"12: {res['DC'][2]:.1f}%")
+        st.progress(res['DC'][2]/100)
         
     with col_b:
         st.markdown("**⚽ Ambos Anotan (BTTS)**")
@@ -165,26 +134,23 @@ if st.button("🚀 REALIZAR ANÁLISIS"):
         st.write(f"NO: {res['BTTS'][1]:.1f}%")
         st.progress(res['BTTS'][1]/100)
 
-    # 5. GOLES / CORNERS / TARJETAS (MERCADOS ORDENADOS)
     st.markdown("---")
     tab_g, tab_c, tab_t = st.tabs(["🥅 GOLES", "🚩 CORNERS", "🎴 TARJETAS"])
 
-    with tab_g:
-        for k, v in res['GOLES'].items():
-            col1, col2 = st.columns([1, 4])
-            col1.markdown(f"**+{k}**")
-            col2.progress(v[0]/100)
+    def draw_market_bars(data, label_prefix):
+        for k, v in data.items():
+            st.markdown(f"**{label_prefix} {k}**")
+            c_over, c_under = st.columns(2)
+            with c_over:
+                st.markdown(f"<p class='label-market'>Over: {v[0]:.1f}%</p>", unsafe_allow_html=True)
+                st.progress(v[0]/100)
+            with c_under:
+                st.markdown(f"<p class='label-market'>Under: {v[1]:.1f}%</p>", unsafe_allow_html=True)
+                st.progress(v[1]/100)
 
-    with tab_c:
-        for k, v in res['CORNERS'].items():
-            col1, col2 = st.columns([1, 4])
-            col1.markdown(f"**+{k}**")
-            col2.progress(v[0]/100)
+    with tab_g: draw_market_bars(res['GOLES'], "Total Goles")
+    with tab_c: draw_market_bars(res['CORNERS'], "Total Corners")
+    with tab_t: draw_market_bars(res['TARJETAS'], "Total Tarjetas")
 
-    with tab_t:
-        for k, v in res['TARJETAS'].items():
-            col1, col2 = st.columns([1, 4])
-            col1.markdown(f"**+{k}**")
-            col2.progress(v[0]/100)
+st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>ProStats Engine v2.0</p>", unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>ProStats Engine v2.0 - Análisis basado en Distribución de Poisson</p>", unsafe_allow_html=True)

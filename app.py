@@ -52,19 +52,37 @@ class MotorMatematico:
             "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
             "TARJETAS": {t: self.calcular_ou_prob(tj_total, t) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
             "CORNERS": {t: self.calcular_ou_prob(co_total, t) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
-            "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:5]
+            "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3] # CAMBIADO A TOP 3
         }
 
 # =================================================================
-# INTERFAZ DE USUARIO PROFESIONAL
+# INTERFAZ DE USUARIO PROFESIONAL (DISEÑO CORREGIDO)
 # =================================================================
 st.set_page_config(page_title="Ultimate Predictor Pro", layout="wide")
 
-# Estilo para las barras y diseño
+# Estilo corregido para evitar que se vea todo blanco y mejorar legibilidad
 st.markdown("""
     <style>
+    /* Fondo general de la página */
+    .stApp { background-color: #f1f5f9; }
+    
+    /* Barras de progreso */
     .stProgress > div > div > div > div { background-color: #1E3A8A; }
-    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    
+    /* Tarjetas de métricas (Marcadores y Resultados) */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Títulos de subsecciones */
+    h3, h2 { color: #1e293b; border-bottom: 2px solid #1E3A8A; padding-bottom: 5px; }
+    
+    /* Contenedores blancos para organizar contenido */
+    .st-emotion-cache-12w0qpk { background-color: white; padding: 20px; border-radius: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -109,11 +127,11 @@ if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
     # --- BLOQUE 3: RESULTADOS VISUALES ---
     st.divider()
     
-    # Marcadores Exactos (TOP 5) - ¡Nuevo!
+    # Marcadores Exactos (TOP 3) - CORREGIDO
     st.subheader("🎯 Marcadores Exactos Más Probables")
-    cols_top = st.columns(5)
+    cols_top = st.columns(3) # Cambiado de 5 a 3
     for idx, (score, prob) in enumerate(res['TOP']):
-        cols_top[idx].metric(f"Top {idx+1}", score, f"{prob:.1f}%")
+        cols_top[idx].metric(f"Probabilidad #{idx+1}", score, f"{prob:.1f}%")
 
     st.divider()
 
@@ -123,9 +141,8 @@ if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
 
     with c1:
         st.write("**Ganador del Partido (1X2)**")
-        # Función para dibujar barra
-        def draw_bar(label, value, color="#1D4ED8"):
-            st.write(f"{label}: {value:.1f}%")
+        def draw_bar(label, value):
+            st.write(f"{label}: **{value:.1f}%**")
             st.progress(value/100)
 
         draw_bar(f"Victoria {nl}", res['1X2'][0])
@@ -155,10 +172,8 @@ if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
         for i, (line, p) in enumerate(res['GOLES'].items()):
             with tabs_g[i]:
                 st.write(f"Probabilidades para {line} goles:")
-                st.write(f"Over {line}: {p[0]:.1f}%")
-                st.progress(p[0]/100)
-                st.write(f"Under {line}: {p[1]:.1f}%")
-                st.progress(p[1]/100)
+                draw_bar(f"Over {line}", p[0])
+                draw_bar(f"Under {line}", p[1])
 
     st.divider()
 
@@ -179,3 +194,4 @@ if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
             with st.expander(f"Línea {l}"):
                 st.write(f"Over: {p[0]:.1f}% | Under: {p[1]:.1f}%")
                 st.progress(p[0]/100)
+

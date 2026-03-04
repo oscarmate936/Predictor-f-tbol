@@ -3,7 +3,7 @@ import math
 import pandas as pd
 
 # =================================================================
-# MOTOR MATEMÁTICO INTEGRAL (SÍNTESIS PRO - Dixon-Coles)
+# MOTOR MATEMÁTICO ORIGINAL (SÍNTESIS PRO)
 # =================================================================
 class MotorMatematico:
     def __init__(self):
@@ -42,7 +42,7 @@ class MotorMatematico:
                 for t in g_lines:
                     if (i + j) > t: g_probs[t][0] += p
                     else: g_probs[t][1] += p
-                if i <= 5 and j <= 5: marcadores[f"{i} - {j}"] = p * 100
+                if i <= 5 and j <= 5: marcadores[f"{i}-{j}"] = p * 100
 
         total = max(0.0001, p1 + px + p2)
         return {
@@ -56,126 +56,133 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ DE USUARIO PROFESIONAL
+# INTERFAZ DE USUARIO ULTIMATE WEB v6.0
 # =================================================================
-st.set_page_config(page_title="Ultimate Predictor Pro", layout="wide")
+st.set_page_config(page_title="Ultimate Stats Predictor", layout="wide", page_icon="⚽")
 
-# Estilo para las barras y diseño
+# Estilo personalizado para barras y diseño
 st.markdown("""
     <style>
-    .stProgress > div > div > div > div { background-color: #1E3A8A; }
-    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #e2e8f0; }
+    .main { background-color: #f1f5f9; }
+    .stButton>button { width: 100%; border-radius: 8px; height: 3em; background-color: #0f172a; color: white; font-weight: bold; }
+    .reportview-container .main .block-container { padding-top: 1rem; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚽ Ultimate Stats Predictor Pro")
-st.write("---")
+st.title("🚀 DASHBOARD DE ANÁLISIS PREDICTIVO")
 
-# --- BLOQUE 1: INTRODUCCIÓN DE DATOS ---
-with st.sidebar:
-    st.header("⚙️ Configuración Global")
-    prom_liga = st.number_input("Goles Promedio Liga", value=2.5, step=0.1)
-    st.divider()
-    st.header("💰 Cuotas de Mercado")
-    c_o1 = st.number_input("Cuota Local", value=1.0)
-    c_ox = st.number_input("Cuota Empate", value=1.0)
-    c_o2 = st.number_input("Cuota Visita", value=1.0)
+# --- SECCIÓN 1: PARÁMETROS DE MERCADO ---
+with st.container():
+    st.subheader("⚙️ Configuración y Cuotas")
+    c_cfg1, c_cfg2, c_cfg3, c_cfg4 = st.columns([1, 1, 1, 1])
+    with c_cfg1:
+        p_liga = st.number_input("Goles Prom. Liga", value=2.5, step=0.1)
+    with c_cfg2:
+        o1 = st.number_input("Cuota Local (1)", value=1.00, step=0.01)
+    with c_cfg3:
+        ox = st.number_input("Cuota Empate (X)", value=1.00, step=0.01)
+    with c_cfg4:
+        o2 = st.number_input("Cuota Visita (2)", value=1.00, step=0.01)
 
-col_local, col_visit = st.columns(2)
+st.divider()
 
-with col_local:
-    st.subheader("🏠 Datos Local")
-    nl = st.text_input("Nombre del Equipo", "LOCAL")
-    lgf = st.number_input("Goles Favor (L)", value=1.7)
-    lgc = st.number_input("Goles Contra (L)", value=1.2)
-    ltj = st.number_input("Tarjetas Promedio (L)", value=2.3)
-    lco = st.number_input("Corners Promedio (L)", value=5.5)
+# --- SECCIÓN 2: ENTRADA DE DATOS DE EQUIPOS ---
+col_l, col_v = st.columns(2)
 
-with col_visit:
-    st.subheader("🚀 Datos Visitante")
-    nv = st.text_input("Nombre del Equipo", "VISITANTE")
-    vgf = st.number_input("Goles Favor (V)", value=1.5)
-    vgc = st.number_input("Goles Contra (V)", value=1.1)
-    vtj = st.number_input("Tarjetas Promedio (V)", value=2.2)
-    vco = st.number_input("Corners Promedio (V)", value=4.8)
+with col_l:
+    st.markdown("### 🏠 EQUIPO LOCAL")
+    nl = st.text_input("Nombre", "LOCAL", key="nl")
+    lgf = st.number_input("Goles Favor (L)", value=1.7, key="lgf")
+    lgc = st.number_input("Goles Contra (L)", value=1.2, key="lgc")
+    ltj = st.number_input("Tarjetas (L)", value=2.3, key="ltj")
+    lco = st.number_input("Corners (L)", value=5.5, key="lco")
 
-# --- BLOQUE 2: PROCESAMIENTO ---
-if st.button("🚀 GENERAR ANÁLISIS DETALLADO", use_container_width=True):
+with col_v:
+    st.markdown("### 🚀 EQUIPO VISITANTE")
+    nv = st.text_input("Nombre", "VISITANTE", key="nv")
+    vgf = st.number_input("Goles Favor (V)", value=1.5, key="vgf")
+    vgc = st.number_input("Goles Contra (V)", value=1.1, key="vgc")
+    vtj = st.number_input("Tarjetas (V)", value=2.2, key="vtj")
+    vco = st.number_input("Corners (V)", value=4.8, key="vco")
+
+st.write("")
+if st.button("CALCULAR TODOS LOS MERCADOS"):
     motor = MotorMatematico()
-    xg_l = (lgf/prom_liga) * (vgc/prom_liga) * prom_liga
-    xg_v = (vgf/prom_liga) * (lgc/prom_liga) * prom_liga
+    # xG dinámico
+    xg_l = (lgf/p_liga) * (vgc/p_liga) * p_liga
+    xg_v = (vgf/p_liga) * (lgc/p_liga) * p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
-    # --- BLOQUE 3: RESULTADOS VISUALES ---
+    # --- MOSTRAR RESULTADOS ---
     st.divider()
     
-    # Marcadores Exactos (TOP 5) - ¡Nuevo!
-    st.subheader("🎯 Marcadores Exactos Más Probables")
-    cols_top = st.columns(5)
-    for idx, (score, prob) in enumerate(res['TOP']):
-        cols_top[idx].metric(f"Top {idx+1}", score, f"{prob:.1f}%")
+    # 1. SUGERENCIAS (Alert box)
+    picks = []
+    if res['DC'][0] > 78: picks.append(f"1X {nl}")
+    if res['DC'][1] > 78: picks.append(f"X2 {nv}")
+    for l, p in res['GOLES'].items():
+        if p[0] > 78: picks.append(f"Over {l}")
+        if p[1] > 78: picks.append(f"Under {l}")
+    
+    if picks:
+        st.warning(f"⚡ **SUGERENCIAS CLAVE (>78%):** {' | '.join(picks[:5])}")
 
-    st.divider()
-
-    # 1X2 y Doble Oportunidad con Barras
-    st.subheader("📊 Mercados Principales")
+    # 2. PROBABILIDADES PRINCIPALES (Con barras)
+    st.header("📊 Probabilidades Principales")
     c1, c2 = st.columns(2)
-
+    
     with c1:
-        st.write("**Ganador del Partido (1X2)**")
-        # Función para dibujar barra
-        def draw_bar(label, value, color="#1D4ED8"):
-            st.write(f"{label}: {value:.1f}%")
-            st.progress(value/100)
-
-        draw_bar(f"Victoria {nl}", res['1X2'][0])
-        draw_bar("Empate (X)", res['1X2'][1])
-        draw_bar(f"Victoria {nv}", res['1X2'][2])
+        st.write(f"**Ganador 1X2**")
+        def show_prob(label, p, odd=1.0):
+            value_fire = " 🔥" if (p/100 * odd) > 1.10 else ""
+            st.write(f"{label}: **{p:.1f}%**{value_fire}")
+            st.progress(p/100)
+            
+        show_prob(f"Victoria {nl}", res['1X2'][0], o1)
+        show_prob("Empate (X)", res['1X2'][1], ox)
+        show_prob(f"Victoria {nv}", res['1X2'][2], o2)
 
     with c2:
-        st.write("**Doble Oportunidad**")
-        draw_bar("1X (Local o Empate)", res['DC'][0])
-        draw_bar("X2 (Visitante o Empate)", res['DC'][1])
-        draw_bar("12 (Local o Visitante)", res['DC'][2])
+        st.write(f"**Doble Oportunidad y BTTS**")
+        show_prob("1X (Local o Empate)", res['DC'][0])
+        show_prob("X2 (Visitante o Empate)", res['DC'][1])
+        show_prob("12 (No Empate)", res['DC'][2])
+        st.write("---")
+        show_prob("Ambos Anotan (SÍ)", res['BTTS'][0])
 
     st.divider()
 
-    # BTTS y Goles
-    st.subheader("🥅 Mercado de Goles")
-    col_btts, col_goles = st.columns([1, 2])
-    
-    with col_btts:
-        st.write("**Ambos Anotan (BTTS)**")
-        draw_bar("SÍ", res['BTTS'][0])
-        draw_bar("NO", res['BTTS'][1])
+    # 3. TABLAS DE GOLES, TARJETAS Y CORNERS
+    st.header("🥅 Mercados de Over / Under")
+    tg1, tg2, tg3 = st.columns(3)
 
-    with col_goles:
-        st.write("**Líneas Over / Under**")
-        tabs_g = st.tabs([f"{l}" for l in res['GOLES'].keys()])
-        for i, (line, p) in enumerate(res['GOLES'].items()):
-            with tabs_g[i]:
-                st.write(f"Probabilidades para {line} goles:")
-                st.write(f"Over {line}: {p[0]:.1f}%")
-                st.progress(p[0]/100)
-                st.write(f"Under {line}: {p[1]:.1f}%")
-                st.progress(p[1]/100)
+    with tg1:
+        st.subheader("Goles")
+        for l, p in res['GOLES'].items():
+            st.write(f"Línea {l}")
+            st.progress(p[0]/100)
+            st.caption(f"Over: {p[0]:.1f}% | Under: {p[1]:.1f}%")
 
-    st.divider()
-
-    # Especiales: Tarjetas y Corners
-    st.subheader("🎴 Especiales (Totales)")
-    col_t, col_c = st.columns(2)
-
-    with col_t:
-        st.markdown("##### Tarjetas")
+    with tg2:
+        st.subheader("Tarjetas")
         for l, p in res['TARJETAS'].items():
-            with st.expander(f"Línea {l}"):
-                st.write(f"Over: {p[0]:.1f}% | Under: {p[1]:.1f}%")
-                st.progress(p[0]/100)
+            st.write(f"Línea {l}")
+            st.progress(p[0]/100)
+            st.caption(f"Over: {p[0]:.0f}% | Under: {p[1]:.0f}%")
 
-    with col_c:
-        st.markdown("##### Corners")
+    with tg3:
+        st.subheader("Corners")
         for l, p in res['CORNERS'].items():
-            with st.expander(f"Línea {l}"):
-                st.write(f"Over: {p[0]:.1f}% | Under: {p[1]:.1f}%")
-                st.progress(p[0]/100)
+            st.write(f"Línea {l}")
+            st.progress(p[0]/100)
+            st.caption(f"Over: {p[0]:.0f}% | Under: {p[1]:.0f}%")
+
+    st.divider()
+
+    # 4. TOP MARCADORES (Sección especial)
+    st.header("🎯 Marcadores Más Probables")
+    cols_score = st.columns(5)
+    for idx, (score, prob) in enumerate(res['TOP']):
+        cols_score[idx].metric(f"Top {idx+1}", score, f"{prob:.1f}%")
+
+

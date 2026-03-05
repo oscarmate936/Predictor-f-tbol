@@ -5,7 +5,7 @@ import plotly.express as px
 import urllib.parse
 
 # =================================================================
-# MOTOR MATEMÁTICO (MANTENIDO INTACTO)
+# MOTOR MATEMÁTICO (PRO STATS ENGINE)
 # =================================================================
 class MotorMatematico:
     def __init__(self):
@@ -63,22 +63,42 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ PROFESIONAL (PRO VERDICT EDITION)
+# INTERFAZ PROFESIONAL (MASTER DASHBOARD)
 # =================================================================
-st.set_page_config(page_title="OR936 Analysis System", layout="wide")
+st.set_page_config(page_title="OR936 Analysis", layout="wide")
 
 st.markdown("""
     <style>
     .stProgress > div > div > div > div { background-color: #00ffcc; }
-    .card { background: #1a1c24; padding: 25px; border-radius: 15px; border: 1px solid #2d2e38; margin-bottom: 20px; }
-    .verdict-card { 
-        background: linear-gradient(135deg, rgba(0,255,204,0.1) 0%, rgba(0,123,255,0.1) 100%); 
-        border: 1px solid #00ffcc; padding: 15px; border-radius: 12px; text-align: center;
-        box-shadow: 0 4px 15px rgba(0,255,204,0.1);
+    .master-card {
+        background: linear-gradient(135deg, #1e1e26 0%, #111118 100%);
+        padding: 30px;
+        border-radius: 20px;
+        border: 1px solid #00ffcc;
+        box-shadow: 0 10px 30px rgba(0,255,204,0.15);
+        margin-bottom: 25px;
     }
-    .value-badge { background: linear-gradient(90deg, #00f260, #0575e6); color: white; padding: 2px 8px; border-radius: 5px; font-size: 0.75em; font-weight: bold; }
-    .share-btn { width: 100%; background-color: #25D366; color: white !important; border: none; padding: 12px; border-radius: 10px; font-weight: bold; text-align: center; display: block; text-decoration: none; transition: 0.3s; }
-    .share-btn:hover { background-color: #128C7E; transform: translateY(-2px); }
+    .score-badge {
+        background: rgba(255,255,255,0.05);
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(0,255,204,0.3);
+        text-align: center;
+    }
+    .verdict-item {
+        border-left: 3px solid #00ffcc;
+        padding-left: 15px;
+        margin-bottom: 12px;
+        background: rgba(255,255,255,0.02);
+        padding: 8px 15px;
+        border-radius: 0 8px 8px 0;
+    }
+    .share-btn { 
+        width: 100%; background-color: #25D366; color: white !important; border: none; 
+        padding: 15px; border-radius: 12px; font-weight: bold; text-align: center; 
+        display: block; text-decoration: none; margin-top: 20px;
+    }
+    .value-tag { background: #00ffcc; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7em; font-weight: 900; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -86,145 +106,136 @@ with st.sidebar:
     st.title("⚙️ Configuración")
     p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, 2.5)
     st.divider()
-    st.subheader("Cuotas (Value Check)")
+    st.subheader("Cuotas del Mercado")
     o1 = st.number_input("Cuota Local", 1.01, 50.0, 2.10)
     ox = st.number_input("Cuota Empate", 1.01, 50.0, 3.20)
     o2 = st.number_input("Cuota Visita", 1.01, 50.0, 3.50)
 
-st.markdown("<h1 style='text-align: center; color: #00ffcc;'>SISTEMA DE ANÁLISIS PROFESIONAL OR936</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS</h1>", unsafe_allow_html=True)
 
-col_a, col_b = st.columns(2)
-with col_a:
+# ENTRADA DE DATOS
+col_l, col_v = st.columns(2)
+with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Nombre Local", "Local")
+    nl = st.text_input("Equipo L", "Local", label_visibility="collapsed")
     c1, c2 = st.columns(2)
     lgf = c1.number_input("Goles Favor L", 0.0, 10.0, 1.7)
     lgc = c2.number_input("Goles Contra L", 0.0, 10.0, 1.2)
     ltj = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3)
     lco = c2.number_input("Corners L", 0.0, 20.0, 5.5)
 
-with col_b:
+with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Nombre Visitante", "Visitante")
+    nv = st.text_input("Equipo V", "Visitante", label_visibility="collapsed")
     c3, c4 = st.columns(2)
     vgf = c3.number_input("Goles Favor V", 0.0, 10.0, 1.5)
     vgc = c4.number_input("Goles Contra V", 0.0, 10.0, 1.1)
     vtj = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2)
     vco = c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
-if st.button("🚀 INICIAR ANÁLISIS DE MERCADOS", use_container_width=True):
+if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     motor = MotorMatematico()
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
+    # --- Lógica de Sugerencias para el Veredicto ---
+    pool = []
+    pool.append({"t": f"Doble Oportunidad 1X", "p": res['DC'][0]})
+    pool.append({"t": f"Doble Oportunidad X2", "p": res['DC'][1]})
+    pool.append({"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
+    pool.append({"t": "Ambos Anotan: NO", "p": res['BTTS'][1]})
+    for line, p in res['GOLES'].items():
+        if 0.5 < line < 4.5:
+            pool.append({"t": f"Over {line} Goles", "p": p[0]})
+            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+    for line, p in res['TARJETAS'].items():
+        pool.append({"t": f"O {line} Tarjetas", "p": p[0]})
+        pool.append({"t": f"U {line} Tarjetas", "p": p[1]})
+    for line, p in res['CORNERS'].items():
+        pool.append({"t": f"O {line} Corners", "p": p[0]})
+        pool.append({"t": f"U {line} Corners", "p": p[1]})
+
+    # Filtrar opciones realistas (entre 65% y 92%)
+    sugerencias = sorted([s for s in pool if 65 < s['p'] < 92], key=lambda x: x['p'], reverse=True)[:4]
+
     # =================================================================
-    # NUEVO: RECOLECCIÓN DE SUGERENCIAS DE TODOS LOS MERCADOS
+    # TARJETA ÚNICA: VERDICTO MAESTRO & TOP MARCADORES
     # =================================================================
-    pool_sugerencias = []
+    st.markdown('<div class="master-card">', unsafe_allow_html=True)
     
-    # 1. Mercados 1X2 y DC
-    pool_sugerencias.append({"op": f"Gana {nl}", "p": res['1X2'][0]})
-    pool_sugerencias.append({"op": "Empate", "p": res['1X2'][1]})
-    pool_sugerencias.append({"op": f"Gana {nv}", "p": res['1X2'][2]})
-    pool_sugerencias.append({"op": f"Doble Oportunidad 1X", "p": res['DC'][0]})
-    pool_sugerencias.append({"op": f"Doble Oportunidad X2", "p": res['DC'][1]})
-    pool_sugerencias.append({"op": f"Doble Oportunidad 12", "p": res['DC'][2]})
+    v_col1, v_col2 = st.columns([1.2, 1])
     
-    # 2. Ambos Anotan
-    pool_sugerencias.append({"op": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
-    pool_sugerencias.append({"op": "Ambos Anotan: NO", "p": res['BTTS'][1]})
-    
-    # 3. Goles (Filtrando Over 0.5 y Under 5.5 por ser muy obvios)
-    for line, probs in res['GOLES'].items():
-        if line > 0.5: pool_sugerencias.append({"op": f"Over {line} Goles", "p": probs[0]})
-        if line < 5.5: pool_sugerencias.append({"op": f"Under {line} Goles", "p": probs[1]})
-        
-    # 4. Tarjetas y Corners (Over y Under)
-    for line, probs in res['TARJETAS'].items():
-        pool_sugerencias.append({"op": f"Over {line} Tarjetas", "p": probs[0]})
-        pool_sugerencias.append({"op": f"Under {line} Tarjetas", "p": probs[1]})
-    for line, probs in res['CORNERS'].items():
-        pool_sugerencias.append({"op": f"Over {line} Corners", "p": probs[0]})
-        pool_sugerencias.append({"op": f"Under {line} Corners", "p": probs[1]})
-
-    # 5. Marcadores Exactos (El Top 1)
-    top_score, top_score_p = res['TOP'][0]
-    pool_sugerencias.append({"op": f"Marcador Exacto: {top_score}", "p": top_score_p})
-
-    # FILTRAR Y ORDENAR: Buscamos lo más probable que no sea una "obviedad" (>92% suele ser cuota ínfima)
-    mejores_opciones = sorted([s for s in pool_sugerencias if s['p'] < 92], key=lambda x: x['p'], reverse=True)[:4]
-
-    # MOSTRAR APARTADO DE SUGERENCIAS
-    st.markdown("### 💎 Veredicto Maestro: Sugerencias de Alta Probabilidad")
-    cols = st.columns(4)
-    for i, sugerencia in enumerate(mejores_opciones):
-        with cols[i]:
+    with v_col1:
+        st.markdown("#### 💎 Veredicto Maestro")
+        for s in sugerencias:
             st.markdown(f"""
-                <div class="verdict-card">
-                    <p style="color:#00ffcc; font-size:0.8em; margin:0;">OPCIÓN #{i+1}</p>
-                    <h4 style="margin:10px 0; color:white; font-size:1em;">{sugerencia['op']}</h4>
-                    <p style="font-weight:bold; color:#fff; margin:0;">{sugerencia['p']:.1f}%</p>
+                <div class="verdict-item">
+                    <span style="color:#00ffcc; font-weight:bold;">{s['p']:.1f}%</span> | {s['t']}
+                </div>
+            """, unsafe_allow_html=True)
+            
+    with v_col2:
+        st.markdown("#### ⚽ Top 3 Marcadores")
+        for i, (score, prob) in enumerate(res['TOP']):
+            st.markdown(f"""
+                <div class="score-badge" style="margin-bottom:8px;">
+                    <span style="color:#00ffcc; font-weight:bold;">#{i+1}</span> | 
+                    <span style="font-size:1.1em; color:white;">{score}</span> 
+                    <span style="color:#aaa; font-size:0.8em;">({prob:.1f}%)</span>
                 </div>
             """, unsafe_allow_html=True)
 
-    # Botón Compartir
-    texto_share = f"📊 *Análisis ProStats OR936*\n⚽ {nl} vs {nv}\n\n🔥 *Sugerencias Top:*\n"
-    for s in mejores_opciones: texto_share += f"✅ {s['op']} ({s['p']:.1f}%)\n"
-    url_wa = f"https://wa.me/?text={urllib.parse.quote(texto_share)}"
-    st.markdown(f'<a href="{url_wa}" target="_blank" class="share-btn">📲 COMPARTIR ANÁLISIS EN WHATSAPP</a>', unsafe_allow_html=True)
+    # Botón WhatsApp dentro de la tarjeta
+    resumen_wa = f"📊 *Análisis OR936: {nl} vs {nv}*\n\n🏆 *Top Marcadores:*\n"
+    for s, p in res['TOP']: resumen_wa += f"• {s} ({p:.1f}%)\n"
+    resumen_wa += f"\n🔥 *Sugerencias:*\n"
+    for s in sugerencias: resumen_wa += f"✅ {s['t']} ({s['p']:.1f}%)\n"
     
-    st.divider()
+    url_wa = f"https://wa.me/?text={urllib.parse.quote(resumen_wa)}"
+    st.markdown(f'<a href="{url_wa}" target="_blank" class="share-btn">📲 COMPARTIR ESTE ANÁLISIS</a>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- PESTAÑAS DETALLADAS (SIN CAMBIOS) ---
-    t1, t2, t3, t4 = st.tabs(["🏆 Resultados 1X2", "🥅 Goles O/U", "🚩 Especiales", "📊 Matriz"])
+    # --- PESTAÑAS DETALLADAS ---
+    tab1, tab2, tab3, tab4 = st.tabs(["🏆 1X2 & DC", "🥅 Goles", "🚩 Especiales", "📊 Matriz"])
 
-    with t1:
+    with tab1:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("##### Probabilidades 1X2")
-            def val(p, o): return " <span class='value-badge'>VALUE</span>" if (p/100*o) > 1.10 else ""
-            st.write(f"**{nl}:** {res['1X2'][0]:.1f}% {val(res['1X2'][0], o1)}", unsafe_allow_html=True)
+            def get_v(p, o): return " <span class='value-tag'>VALUE</span>" if (p/100*o) > 1.10 else ""
+            st.write(f"**{nl}:** {res['1X2'][0]:.1f}% {get_v(res['1X2'][0], o1)}", unsafe_allow_html=True)
             st.progress(res['1X2'][0]/100)
-            st.write(f"**Empate:** {res['1X2'][1]:.1f}% {val(res['1X2'][1], ox)}", unsafe_allow_html=True)
+            st.write(f"**Empate:** {res['1X2'][1]:.1f}% {get_v(res['1X2'][1], ox)}", unsafe_allow_html=True)
             st.progress(res['1X2'][1]/100)
-            st.write(f"**{nv}:** {res['1X2'][2]:.1f}% {val(res['1X2'][2], o2)}", unsafe_allow_html=True)
+            st.write(f"**{nv}:** {res['1X2'][2]:.1f}% {get_v(res['1X2'][2], o2)}", unsafe_allow_html=True)
             st.progress(res['1X2'][2]/100)
         with c2:
             st.markdown("##### Doble Oportunidad")
-            st.write(f"**1X:** {res['DC'][0]:.1f}%")
+            st.write(f"**1X:** {res['DC'][0]:.1f}% | **X2:** {res['DC'][1]:.1f}% | **12:** {res['DC'][2]:.1f}%")
             st.progress(res['DC'][0]/100)
-            st.write(f"**X2:** {res['DC'][1]:.1f}%")
-            st.progress(res['DC'][1]/100)
-            st.write(f"**12:** {res['DC'][2]:.1f}%")
-            st.progress(res['DC'][2]/100)
 
-    with t2:
+    with tab2:
         g1, g2 = st.columns(2)
         for i, (line, probs) in enumerate(res['GOLES'].items()):
             with (g1 if i < 3 else g2):
-                st.write(f"**Línea {line}**: O {probs[0]:.1f}% | U {probs[1]:.1f}%")
+                st.write(f"**Línea {line}**: Over {probs[0]:.1f}% | Under {probs[1]:.1f}%")
                 st.progress(probs[0]/100)
-        st.divider()
-        st.write(f"**Ambos Anotan:** SÍ {res['BTTS'][0]:.1f}% | NO {res['BTTS'][1]:.1f}%")
 
-    with t3:
+    with tab3:
         tj, co = st.columns(2)
         with tj:
-            st.markdown("##### 🎴 Tarjetas")
+            st.write("🎴 **Tarjetas**")
             for k, v in res['TARJETAS'].items():
-                st.write(f"Línea {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
-                st.progress(v[0]/100)
+                st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
         with co:
-            st.markdown("##### 🚩 Corners")
+            st.write("🚩 **Corners**")
             for k, v in res['CORNERS'].items():
-                st.write(f"Línea {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
-                st.progress(v[0]/100)
+                st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
 
-    with t4:
-        st.markdown("##### Mapa de Calor de Marcadores")
+    with tab4:
         df_m = pd.DataFrame(res['MATRIZ'])
-        fig = px.imshow(df_m, color_continuous_scale='Viridis', text_auto=".1f", labels=dict(x=f"Goles {nv}", y=f"Goles {nl}"))
+        fig = px.imshow(df_m, color_continuous_scale='Viridis', text_auto=".1f")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>ProStats OR936 v2.5 - All Markets Analysis Active</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>ProStats Engine OR936 v2.6</p>", unsafe_allow_html=True)

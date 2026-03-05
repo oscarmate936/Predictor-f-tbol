@@ -93,6 +93,14 @@ st.markdown("""
         padding: 8px 15px;
         border-radius: 0 8px 8px 0;
     }
+    .btts-card {
+        background: rgba(0, 255, 204, 0.05);
+        padding: 10px;
+        border-radius: 10px;
+        text-align: center;
+        border: 1px dashed #00ffcc;
+        margin-bottom: 15px;
+    }
     .share-btn { 
         width: 100%; background-color: #25D366; color: white !important; border: none; 
         padding: 15px; border-radius: 12px; font-weight: bold; text-align: center; 
@@ -139,7 +147,7 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # --- Lógica de Sugerencias para el Veredicto ---
+    # --- Lógica de Sugerencias ---
     pool = []
     pool.append({"t": f"Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": f"Doble Oportunidad X2", "p": res['DC'][1]})
@@ -156,11 +164,10 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
         pool.append({"t": f"O {line} Corners", "p": p[0]})
         pool.append({"t": f"U {line} Corners", "p": p[1]})
 
-    # Filtrar opciones realistas (entre 65% y 92%)
-    sugerencias = sorted([s for s in pool if 65 < s['p'] < 92], key=lambda x: x['p'], reverse=True)[:4]
+    sugerencias = sorted([s for s in pool if 65 < s['p'] < 93], key=lambda x: x['p'], reverse=True)[:4]
 
     # =================================================================
-    # TARJETA ÚNICA: VERDICTO MAESTRO & TOP MARCADORES
+    # TARJETA ÚNICA: VERDICTO, AMBOS ANOTAN & MARCADORES
     # =================================================================
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     
@@ -176,7 +183,18 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
             """, unsafe_allow_html=True)
             
     with v_col2:
-        st.markdown("#### ⚽ Top 3 Marcadores")
+        # Apartado de Ambos Anotan
+        st.markdown("#### ⚽ Probabilidades Clave")
+        st.markdown(f"""
+            <div class="btts-card">
+                <span style="color:#aaa; font-size:0.85em;">AMBOS ANOTAN</span><br>
+                <span style="color:white; font-weight:bold;">SÍ: {res['BTTS'][0]:.1f}%</span> | 
+                <span style="color:#aaa;">NO: {res['BTTS'][1]:.1f}%</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Top 3 Marcadores
+        st.markdown("<p style='margin-bottom:10px; font-size:0.9em; color:#00ffcc; font-weight:bold;'>TOP 3 MARCADORES</p>", unsafe_allow_html=True)
         for i, (score, prob) in enumerate(res['TOP']):
             st.markdown(f"""
                 <div class="score-badge" style="margin-bottom:8px;">
@@ -186,11 +204,12 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
                 </div>
             """, unsafe_allow_html=True)
 
-    # Botón WhatsApp dentro de la tarjeta
-    resumen_wa = f"📊 *Análisis OR936: {nl} vs {nv}*\n\n🏆 *Top Marcadores:*\n"
-    for s, p in res['TOP']: resumen_wa += f"• {s} ({p:.1f}%)\n"
-    resumen_wa += f"\n🔥 *Sugerencias:*\n"
+    # Botón WhatsApp
+    resumen_wa = f"📊 *Análisis ProStats OR936*\n⚽ {nl} vs {nv}\n\n"
+    resumen_wa += f"🔥 *Sugerencias:*\n"
     for s in sugerencias: resumen_wa += f"✅ {s['t']} ({s['p']:.1f}%)\n"
+    resumen_wa += f"\n🥅 *Ambos Anotan:* {'SÍ' if res['BTTS'][0] > 50 else 'NO'} ({max(res['BTTS']):.1f}%)\n"
+    resumen_wa += f"\n⚽ *Marcador Probable:* {res['TOP'][0][0]}"
     
     url_wa = f"https://wa.me/?text={urllib.parse.quote(resumen_wa)}"
     st.markdown(f'<a href="{url_wa}" target="_blank" class="share-btn">📲 COMPARTIR ESTE ANÁLISIS</a>', unsafe_allow_html=True)
@@ -238,4 +257,4 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
         fig = px.imshow(df_m, color_continuous_scale='Viridis', text_auto=".1f")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>ProStats Engine OR936 v2.6</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>ProStats Engine OR936 v2.7</p>", unsafe_allow_html=True)

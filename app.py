@@ -7,7 +7,7 @@ import requests
 from datetime import datetime
 
 # =================================================================
-# CONFIGURACIÓN API (apiv3.apifootball.com) - INTEGRACIÓN
+# CONFIGURACIÓN API (apiv3.apifootball.com)
 # =================================================================
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
@@ -22,7 +22,7 @@ def api_request(action, params={}):
         return []
 
 # =================================================================
-# MOTOR MATEMÁTICO (PRO STATS ENGINE) - TU CÓDIGO ORIGINAL
+# MOTOR MATEMÁTICO (PRO STATS ENGINE)
 # =================================================================
 class MotorMatematico:
     def __init__(self):
@@ -80,9 +80,9 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ PROFESIONAL (MASTER DASHBOARD) - TU CÓDIGO ORIGINAL
+# INTERFAZ PROFESIONAL (MASTER DASHBOARD)
 # =================================================================
-st.set_page_config(page_title="OR936 Analysis", layout="wide")
+st.set_page_config(page_title="OR936 Elite Analysis", layout="wide")
 
 st.markdown("""
     <style>
@@ -130,10 +130,16 @@ st.markdown("""
 with st.sidebar:
     st.title("⚙️ Configuración")
     
-    # --- BLOQUE DE AUTOMATIZACIÓN ---
+    # --- LISTA DE LIGAS SOLICITADAS ---
     st.subheader("🤖 Sincronización API")
-    ligas_api = {"La Liga (ESP)": 302, "Premier League (ENG)": 152, "Serie A (ITA)": 207, "Bundesliga (GER)": 175, "Ligue 1 (FRA)": 168}
-    nombre_liga = st.selectbox("Selecciona Liga", list(ligas_api.keys()))
+    ligas_api = {
+        "FA Cup (ENG)": 145,
+        "Liga Mayor (SLV)": 601,
+        "AFC Champions League Elite": 504,
+        "Brasileirão Betano": 99,
+        "UEFA Champions League": 3
+    }
+    nombre_liga = st.selectbox("Selecciona Competición", list(ligas_api.keys()))
     league_id = ligas_api[nombre_liga]
     
     hoy = datetime.now().strftime("%Y-%m-%d")
@@ -146,7 +152,7 @@ with st.sidebar:
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": league_id})
             if standings:
-                # Calcular promedio de liga
+                # Promedio de liga automático
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 st.session_state['p_liga_auto'] = total_g / (total_pj / 2) if total_pj > 0 else 2.5
@@ -169,7 +175,8 @@ with st.sidebar:
                     st.session_state['vgc_auto'] = float(dv['overall_league_GA']) / pjv
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.success("¡Sincronizado!")
-    # --- FIN BLOQUE AUTOMATIZACIÓN ---
+            else:
+                st.warning("Esta competición no tiene tabla de posiciones activa para sincronizar.")
 
     st.divider()
     p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, st.session_state.get('p_liga_auto', 2.5))
@@ -181,7 +188,7 @@ with st.sidebar:
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS</h1>", unsafe_allow_html=True)
 
-# ENTRADA DE DATOS - TU CÓDIGO ORIGINAL CONECTADO A SESSION_STATE
+# ENTRADA DE DATOS
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
@@ -201,7 +208,6 @@ with col_v:
     vtj = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2)
     vco = c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
-# TODO EL BLOQUE DE PROCESAMIENTO Y PESTAÑAS ES TU CÓDIGO ORIGINAL SIN CAMBIOS
 if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     motor = MotorMatematico()
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga

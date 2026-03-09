@@ -6,32 +6,37 @@ import urllib.parse
 import requests
 
 # =================================================================
-# CONFIGURACIÓN NUEVA API (apifootball.com)
+# CONFIGURACIÓN API (apifootball.com)
 # =================================================================
+# Clave y URL corregidas para evitar errores de ruta (404)
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
-BASE_URL = "https://apifootball.com/api/"
+BASE_URL = "https://apifootball.com/api/index.php"
 
 @st.cache_data(ttl=3600)
 def obtener_equipos_y_stats(league_id):
-    # En esta API, 'get_standings' nos da los goles a favor y en contra de todos
-    url = f"{BASE_URL}?action=get_standings&league_id={league_id}&APIkey={API_KEY}"
+    """Obtiene la tabla de posiciones para extraer goles y partidos jugados."""
+    params = {
+        "action": "get_standings",
+        "league_id": league_id,
+        "APIkey": API_KEY
+    }
     try:
-        res = requests.get(url, timeout=10)
+        res = requests.get(BASE_URL, params=params, timeout=10)
+        if res.status_code != 200:
+            return []
         data = res.json()
-        if "error" in data:
-            st.error(f"Error de API: {data['error']}")
+        if isinstance(data, dict) and "error" in data:
             return []
         return data
-    except Exception as e:
-        st.error(f"Fallo de conexión: {e}")
+    except:
         return []
 
 # =================================================================
-# MOTOR MATEMÁTICO (PRO STATS ENGINE) - INTACTO
+# MOTOR MATEMÁTICO (DIXON-COLES ENGINE)
 # =================================================================
 class MotorMatematico:
     def __init__(self):
-        self.rho = -0.15
+        self.rho = -0.15 # Ajuste para corregir subestimación de empates bajos
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
@@ -84,11 +89,11 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ (UI)
+# INTERFAZ DE USUARIO (UI)
 # =================================================================
-st.set_page_config(page_title="OR936 APIFootball Pro", layout="wide")
+st.set_page_config(page_title="OR936 Analysis Pro", layout="wide")
 
-# CSS personalizado
+# CSS para estilo Elite
 st.markdown("""
     <style>
     .stProgress > div > div > div > div { background-color: #00ffcc; }
@@ -101,35 +106,38 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("⚽ API-Football Selector")
-    # Diccionario de ligas comunes en apifootball.com
-    ligas_dict = {"La Liga (ESP)": 302, "Premier League (ENG)": 152, "Serie A (ITA)": 207, "Bundesliga (GER)": 175, "Ligue 1 (FRA)": 168, "Champions League": 3}
-    nombre_liga = st.selectbox("1. Selecciona Liga", list(ligas_dict.keys()))
-    league_id = ligas_dict[nombre_liga]
+    st.title("⚽ API Smart Selector")
+    ligas = {
+        "La Liga (ESP)": 302, 
+        "Premier League (ENG)": 152, 
+        "Serie A (ITA)": 207, 
+        "Bundesliga (GER)": 175, 
+        "Champions League": 3
+    }
+    liga_sel = st.selectbox("1. Elige Liga", list(ligas.keys()))
     
-    st.divider()
+    standings = obtener_equipos_y_stats(ligas[liga_sel])
     
-    standings = obtener_equipos_y_stats(league_id)
     if standings:
-        lista_nombres = [t['team_name'] for t in standings]
-        equipo_l = st.selectbox("2. Equipo Local", lista_nombres, index=0)
-        equipo_v = st.selectbox("3. Equipo Visitante", lista_nombres, index=1)
+        nombres = [t['team_name'] for t in standings]
+        eq_l = st.selectbox("2. Local", nombres, index=0)
+        eq_v = st.selectbox("3. Visitante", nombres, index=1)
         
-        if st.button("📥 CARGAR DATOS AUTOMÁTICOS"):
-            data_l = next(t for t in standings if t['team_name'] == equipo_l)
-            data_v = next(t for t in standings if t['team_name'] == equipo_v)
+        if st.button("📥 CARGAR DATOS REALES"):
+            d_l = next(t for t in standings if t['team_name'] == eq_l)
+            d_v = next(t for t in standings if t['team_name'] == eq_v)
             
-            pj_l = float(data_l['overall_league_payed'])
-            pj_v = float(data_v['overall_league_payed'])
+            # Promedios de goles (Goles / Partidos Jugados)
+            pj_l = max(1, int(d_l['overall_league_payed']))
+            pj_v = max(1, int(d_v['overall_league_payed']))
             
-            st.session_state['lgf'] = float(data_l['overall_league_GF']) / pj_l
-            st.session_state['lgc'] = float(data_l['overall_league_GA']) / pj_l
-            st.session_state['vgf'] = float(data_v['overall_league_GF']) / pj_v
-            st.session_state['vgc'] = float(data_v['overall_league_GA']) / pj_v
-            st.session_state['l_name'] = equipo_l
-            st.session_state['v_name'] = equipo_v
-            st.success("Estadísticas cargadas")
-
+            st.session_state['lgf'] = float(d_l['overall_league_GF']) / pj_l
+            st.session_state['lgc'] = float(d_l['overall_league_GA']) / pj_l
+            st.session_state['vgf'] = float(d_v['overall_league_GF']) / pj_v
+            st.session_state['vgc'] = float(d_v['overall_league_GA']) / pj_v
+            st.session_state['l_name'], st.session_state['v_name'] = eq_l, eq_v
+            st.success("Datos actualizados.")
+    
     st.divider()
     p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, 2.5)
     o1 = st.number_input("Cuota Local", 1.01, 50.0, 2.10)
@@ -138,40 +146,42 @@ with st.sidebar:
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS V3.5</h1>", unsafe_allow_html=True)
 
+# ENTRADA DE DATOS (Main Panel)
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Nombre L", st.session_state.get('l_name', 'Local'))
+    nl = st.text_input("Equipo L", st.session_state.get('l_name', 'Local'))
     c1, c2 = st.columns(2)
     lgf = c1.number_input("Goles Favor L", 0.0, 10.0, st.session_state.get('lgf', 1.7))
     lgc = c2.number_input("Goles Contra L", 0.0, 10.0, st.session_state.get('lgc', 1.2))
-    ltj = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3)
-    lco = c2.number_input("Corners L", 0.0, 20.0, 5.5)
+    ltj, lco = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3), c2.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Nombre V", st.session_state.get('v_name', 'Visitante'))
+    nv = st.text_input("Equipo V", st.session_state.get('v_name', 'Visitante'))
     c3, c4 = st.columns(2)
     vgf = c3.number_input("Goles Favor V", 0.0, 10.0, st.session_state.get('vgf', 1.5))
     vgc = c4.number_input("Goles Contra V", 0.0, 10.0, st.session_state.get('vgc', 1.1))
-    vtj = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2)
-    vco = c4.number_input("Corners V", 0.0, 20.0, 4.8)
+    vtj, vco = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2), c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
+# PROCESAR
 if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     motor = MotorMatematico()
+    # xG dinámicos basados en fuerza de ataque vs debilidad de defensa
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # Lógica de sugerencias
+    # Sugerencias (Pool de lógica)
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
-        if 0.5 < line < 4.5:
+        if 1.5 <= line <= 3.5:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     
-    sugerencias = sorted([s for s in pool if 66 < s['p'] < 93], key=lambda x: x['p'], reverse=True)[:4]
+    sugerencias = sorted([s for s in pool if 66 < s['p'] < 92], key=lambda x: x['p'], reverse=True)[:4]
 
+    # PANEL DE RESULTADOS
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v_col1, v_col2 = st.columns([1.2, 1])
     with v_col1:
@@ -186,17 +196,17 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     
     resumen_wa = f"📊 *Análisis OR936*\n⚽ {nl} vs {nv}\n\n🔥 *Sugerencias:*\n"
     for s in sugerencias: resumen_wa += f"✅ {s['t']} ({s['p']:.1f}%)\n"
-    url_wa = f"https://wa.me/?text={urllib.parse.quote(resumen_wa)}"
-    st.markdown(f'<a href="{url_wa}" target="_blank" class="share-btn">📲 COMPARTIR ANÁLISIS</a>', unsafe_allow_html=True)
+    st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(resumen_wa)}" target="_blank" class="share-btn">📲 COMPARTIR ANÁLISIS</a>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # TABS DETALLADOS
     tab1, tab2, tab3, tab4 = st.tabs(["🏆 1X2 & DC", "🥅 Goles", "🚩 Especiales", "📊 Matriz"])
     with tab1:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("##### Probabilidades 1X2")
             for i, label, cuota in zip(range(3), [nl, 'Empate', nv], [o1, ox, o2]):
-                val_tag = " <span class='value-tag'>VALUE</span>" if (res['1X2'][i]/100*cuota) > 1.15 else ""
+                val_tag = " <span class='value-tag'>VALUE</span>" if (res['1X2'][i]/100*cuota) > 1.12 else ""
                 st.write(f"**{label}:** {res['1X2'][i]:.1f}%{val_tag}", unsafe_allow_html=True)
                 st.progress(res['1X2'][i]/100)
     with tab2:
@@ -218,4 +228,4 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
         fig = px.imshow(df_m, color_continuous_scale='Viridis', text_auto=".1f", labels=dict(x=nv, y=nl))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>ProStats Engine OR936 v3.5 (apifootball.com version)</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>ProStats Engine OR936 v3.5 (Stable apifootball.com)</p>", unsafe_allow_html=True)

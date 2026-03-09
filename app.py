@@ -132,13 +132,11 @@ with st.sidebar:
     
     st.subheader("🤖 Sincronización API")
     ligas_api = {
-        # --- Ligas Principales ---
         "La Liga (ESP)": 302,
         "Premier League (ENG)": 152,
         "Serie A (ITA)": 207,
         "Bundesliga (GER)": 175,
         "Ligue 1 (FRA)": 168,
-        # --- Ligas y Copas Adicionales ---
         "FA Cup (ENG)": 145,
         "Liga Mayor (SLV)": 601,
         "AFC Champions League Elite": 504,
@@ -148,20 +146,26 @@ with st.sidebar:
     nombre_liga = st.selectbox("Selecciona Competición", list(ligas_api.keys()))
     league_id = ligas_api[nombre_liga]
     
-    hoy = datetime.now().strftime("%Y-%m-%d")
-    eventos = api_request("get_events", {"from": hoy, "to": hoy, "league_id": league_id})
+    # --- CAMBIO: SELECTOR DE FECHA ---
+    fecha_analisis = st.date_input("Selecciona fecha de partidos", datetime.now())
+    fecha_str = fecha_analisis.strftime("%Y-%m-%d")
+    
+    # Buscamos eventos para la fecha seleccionada
+    eventos = api_request("get_events", {"from": fecha_str, "to": fecha_str, "league_id": league_id})
     
     if eventos and isinstance(eventos, list):
         opciones_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        partido_sel = st.selectbox("Partido de Hoy", list(opciones_p.keys()))
+        partido_sel = st.selectbox("Partidos encontrados", list(opciones_p.keys()))
         
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": league_id})
             if standings:
+                # Calcular promedio de liga
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 st.session_state['p_liga_auto'] = total_g / (total_pj / 2) if total_pj > 0 else 2.5
                 
+                # Buscar equipos en la tabla
                 data_p = opciones_p[partido_sel]
                 def buscar(n, tabla):
                     for t in tabla:
@@ -178,11 +182,11 @@ with st.sidebar:
                     st.session_state['vgf_auto'] = float(dv['overall_league_GF']) / pjv
                     st.session_state['vgc_auto'] = float(dv['overall_league_GA']) / pjv
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                    st.success("¡Sincronizado!")
+                    st.success("¡Sincronizado con éxito!")
             else:
-                st.warning("No hay tabla de posiciones activa hoy para esta competición (común en rondas de Copa).")
+                st.warning("No hay tabla disponible para esta competición en la fecha seleccionada.")
     else:
-        st.info("No hay partidos programados hoy para esta competición.")
+        st.info("No hay partidos programados para esta fecha.")
 
     st.divider()
     p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, st.session_state.get('p_liga_auto', 2.5))
@@ -220,6 +224,7 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
+    # --- Lógica de Sugerencias ---
     pool = []
     pool.append({"t": f"Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": f"Doble Oportunidad X2", "p": res['DC'][1]})

@@ -12,7 +12,7 @@ from datetime import datetime
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estados críticos
+# Inicialización de estados críticos para persistencia
 if 'p_liga_auto' not in st.session_state:
     st.session_state['p_liga_auto'] = 2.5
 
@@ -30,7 +30,8 @@ def api_request(action, params={}):
 # =================================================================
 def triple_bar(p1, px, p2, n1, nx, n2):
     st.markdown(f"""
-        <div style="margin-top: 25px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
+        <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
+            <p style='color:#00ffcc; font-size:0.9em; font-weight:bold; margin-bottom:10px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
             <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
                 <span>{n1}: <b>{p1:.1f}%</b></span>
                 <span>{nx}: <b>{px:.1f}%</b></span>
@@ -197,6 +198,7 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
+    # SUGERENCIAS Y MARCADORES (MASTER CARD)
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
@@ -220,6 +222,10 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # --- APARTADO 1X2 ANTES DE TABS ---
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
+
+    # --- PESTAÑAS ---
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
     
     with tab_dc:
@@ -254,7 +260,4 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     with tab_m:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
-    # --- BARRA 1X2 MOVIDA HACIA ABAJO ---
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
-
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Fix Visual Tarjetas & 1X2</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Barra 1X2 Reubicada</p>", unsafe_allow_html=True)

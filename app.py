@@ -13,7 +13,7 @@ import difflib
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estados críticos (Persistencia)
+# Inicialización de estados críticos
 keys_to_init = {
     'p_liga_auto': 2.5,
     'estilo_auto': "Equilibrada",
@@ -156,7 +156,6 @@ with st.sidebar:
                 nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
                 st.session_state['p_liga_auto'] = nuevo_promedio
                 
-                # Auto-Estilo
                 if nuevo_promedio > 2.85: st.session_state['estilo_auto'] = "Ultra-Ofensiva"
                 elif nuevo_promedio < 2.45: st.session_state['estilo_auto'] = "Defensiva"
                 else: st.session_state['estilo_auto'] = "Equilibrada"
@@ -177,7 +176,6 @@ with st.sidebar:
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.4</h1>", unsafe_allow_html=True)
 
-# PARÁMETROS DE ENTRADA (Vinculados a session_state)
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
@@ -206,23 +204,54 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     xg_l, xg_v = (lgf/p_liga)*(vgc/p_liga)*p_liga, (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # Sugerencias
-    pool = [{"t": "1X", "p": res['DC'][0]}, {"t": "X2", "p": res['DC'][1]}, {"t": "BTTS SÍ", "p": res['BTTS'][0]}]
-    for l in [1.5, 2.5, 3.5]: pool.append({"t": f"Over {l}", "p": res['GOLES'][l][0]})
-    sug = sorted([s for s in pool if 65 < s['p'] < 96], key=lambda x: x['p'], reverse=True)[:6]
+    # Pool de Sugerencias (Total 10)
+    pool = [
+        {"t": "1X (Local o Empate)", "p": res['DC'][0]},
+        {"t": "X2 (Visita o Empate)", "p": res['DC'][1]},
+        {"t": "12 (Local o Visita)", "p": res['DC'][2]},
+        {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]},
+        {"t": "Ambos Anotan: NO", "p": res['BTTS'][1]}
+    ]
+    for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: 
+        pool.append({"t": f"Over {l} Goles", "p": res['GOLES'][l][0]})
+        pool.append({"t": f"Under {l} Goles", "p": res['GOLES'][l][1]})
+    
+    sug = sorted([s for s in pool if 60 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:10]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
-        st.markdown(f"#### 💎 Sugerencias ({estilo_liga})")
+        st.markdown(f"#### 💎 Top 10 Sugerencias ({estilo_liga})")
         for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("#### ⚽ Marcadores")
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     
-    # Botón WhatsApp
-    msg = urllib.parse.quote(f"📊 *ANÁLISIS {nl} vs {nv}*\n🏆 Estilo: {estilo_liga}\n\n💎 *Sugerencias:*\n" + "\n".join([f"• {s['t']}: {s['p']:.1f}%" for s in sug]))
+    msg = urllib.parse.quote(f"📊 *ANÁLISIS {nl} vs {nv}*\n🏆 Estilo: {estilo_liga}\n\n💎 *Top Sugerencias:*\n" + "\n".join([f"• {s['t']}: {s['p']:.1f}%" for s in sug]))
     st.link_button("📲 COMPARTIR EN WHATSAPP", f"https://wa.me/?text={msg}", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    triple_bar(res['1X2'][0], res['1X2
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
+
+    t1, t2, t3, t4 = st.tabs(["🏆 Oportunidad", "🥅 Goles", "🚩 Especiales", "📊 Matriz"])
+    with t1:
+        dual_bar_explicit("1X (Local o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], "#9b59b6")
+        dual_bar_explicit("X2 (Visitante o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], "#f39c12")
+        dual_bar_explicit("12 (Local o Visitante)", res['DC'][2], "X Directo", 100-res['DC'][2], "#e74c3c")
+    with t2:
+        c_ga, c_gb = st.columns(2)
+        with c_ga: 
+            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"Over {l}", res['GOLES'][l][0], f"Under {l}", res['GOLES'][l][1])
+        with c_gb: dual_bar_explicit("Ambos Anotan", res['BTTS'][0], "No Anotan", res['BTTS'][1], "#f1c40f")
+    with t3:
+        c_sa, c_sb = st.columns(2)
+        with c_sa: 
+            st.markdown("🚩 **Corners**")
+            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], "#2ecc71")
+        with c_sb:
+            st.markdown("🎴 **Tarjetas**")
+            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], "#e74c3c")
+    with t4:
+        st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ'], columns=[f"{nv} {i}" for i in range(6)], index=[f"{nl} {i}" for i in range(6)]), text_auto=".1f", color_continuous_scale='Viridis'), use_container_width=True)
+
+st.markdown(f"<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.4 | GPM Liga: {st.session_state['p_liga_auto']:.2f}</p>", unsafe_allow_html=True)

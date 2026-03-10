@@ -1,25 +1,8 @@
-Import streamlit as st
+import streamlit as st
 import math
 import pandas as pd
 import plotly.express as px
 import urllib.parse
-import requests
-from datetime import datetime
-
-# =================================================================
-# CONFIGURACIÓN API (apiv3.apifootball.com)
-# =================================================================
-API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
-BASE_URL = "https://apiv3.apifootball.com/"
-
-@st.cache_data(ttl=3600)
-def api_request(action, params={}):
-    params.update({"action": action, "APIkey": API_KEY})
-    try:
-        res = requests.get(BASE_URL, params=params, timeout=10)
-        return res.json() if res.status_code == 200 else []
-    except:
-        return []
 
 # =================================================================
 # MOTOR MATEMÁTICO (PRO STATS ENGINE)
@@ -82,7 +65,7 @@ class MotorMatematico:
 # =================================================================
 # INTERFAZ PROFESIONAL (MASTER DASHBOARD)
 # =================================================================
-st.set_page_config(page_title="OR936 Elite Analysis", layout="wide")
+st.set_page_config(page_title="OR936 Analysis", layout="wide")
 
 st.markdown("""
     <style>
@@ -129,67 +112,7 @@ st.markdown("""
 
 with st.sidebar:
     st.title("⚙️ Configuración")
-    
-    st.subheader("🤖 Sincronización API")
-    ligas_api = {
-        "La Liga (ESP)": 302,
-        "Premier League (ENG)": 152,
-        "Serie A (ITA)": 207,
-        "Bundesliga (GER)": 175,
-        "Ligue 1 (FRA)": 168,
-        "FA Cup (ENG)": 145,
-        "Liga Mayor (SLV)": 601,
-        "AFC Champions League Elite": 504,
-        "Brasileirão Betano": 99,
-        "UEFA Champions League": 3
-    }
-    nombre_liga = st.selectbox("Selecciona Competición", list(ligas_api.keys()))
-    league_id = ligas_api[nombre_liga]
-    
-    # --- CAMBIO: SELECTOR DE FECHA ---
-    fecha_analisis = st.date_input("Selecciona fecha de partidos", datetime.now())
-    fecha_str = fecha_analisis.strftime("%Y-%m-%d")
-    
-    # Buscamos eventos para la fecha seleccionada
-    eventos = api_request("get_events", {"from": fecha_str, "to": fecha_str, "league_id": league_id})
-    
-    if eventos and isinstance(eventos, list):
-        opciones_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        partido_sel = st.selectbox("Partidos encontrados", list(opciones_p.keys()))
-        
-        if st.button("⚡ SINCRONIZAR DATOS"):
-            standings = api_request("get_standings", {"league_id": league_id})
-            if standings:
-                # Calcular promedio de liga
-                total_g = sum(int(t['overall_league_GF']) for t in standings)
-                total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                st.session_state['p_liga_auto'] = total_g / (total_pj / 2) if total_pj > 0 else 2.5
-                
-                # Buscar equipos en la tabla
-                data_p = opciones_p[partido_sel]
-                def buscar(n, tabla):
-                    for t in tabla:
-                        if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
-                    return None
-                
-                dl = buscar(data_p['match_hometeam_name'], standings)
-                dv = buscar(data_p['match_awayteam_name'], standings)
-                
-                if dl and dv:
-                    pjl, pjv = max(1, int(dl['overall_league_payed'])), max(1, int(dv['overall_league_payed']))
-                    st.session_state['lgf_auto'] = float(dl['overall_league_GF']) / pjl
-                    st.session_state['lgc_auto'] = float(dl['overall_league_GA']) / pjl
-                    st.session_state['vgf_auto'] = float(dv['overall_league_GF']) / pjv
-                    st.session_state['vgc_auto'] = float(dv['overall_league_GA']) / pjv
-                    st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                    st.success("¡Sincronizado con éxito!")
-            else:
-                st.warning("No hay tabla disponible para esta competición en la fecha seleccionada.")
-    else:
-        st.info("No hay partidos programados para esta fecha.")
-
-    st.divider()
-    p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, st.session_state.get('p_liga_auto', 2.5))
+    p_liga = st.number_input("Promedio Goles Liga", 0.1, 10.0, 2.5)
     st.divider()
     st.subheader("Cuotas del Mercado")
     o1 = st.number_input("Cuota Local", 1.01, 50.0, 2.10)
@@ -202,19 +125,19 @@ st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSI
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Equipo L", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
+    nl = st.text_input("Equipo L", "Local", label_visibility="collapsed")
     c1, c2 = st.columns(2)
-    lgf = c1.number_input("Goles Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
-    lgc = c2.number_input("Goles Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
+    lgf = c1.number_input("Goles Favor L", 0.0, 10.0, 1.7)
+    lgc = c2.number_input("Goles Contra L", 0.0, 10.0, 1.2)
     ltj = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3)
     lco = c2.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Equipo V", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
+    nv = st.text_input("Equipo V", "Visitante", label_visibility="collapsed")
     c3, c4 = st.columns(2)
-    vgf = c3.number_input("Goles Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
-    vgc = c4.number_input("Goles Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
+    vgf = c3.number_input("Goles Favor V", 0.0, 10.0, 1.5)
+    vgc = c4.number_input("Goles Contra V", 0.0, 10.0, 1.1)
     vtj = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2)
     vco = c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
@@ -243,27 +166,56 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
 
     sugerencias = sorted([s for s in pool if 65 < s['p'] < 93], key=lambda x: x['p'], reverse=True)[:4]
 
+    # =================================================================
+    # TARJETA ÚNICA: VERDICTO, AMBOS ANOTAN & MARCADORES
+    # =================================================================
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
+    
     v_col1, v_col2 = st.columns([1.2, 1])
     
     with v_col1:
         st.markdown("#### 💎 Veredicto Maestro")
         for s in sugerencias:
-            st.markdown(f'<div class="verdict-item"><span style="color:#00ffcc; font-weight:bold;">{s["p"]:.1f}%</span> | {s["t"]}</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="verdict-item">
+                    <span style="color:#00ffcc; font-weight:bold;">{s['p']:.1f}%</span> | {s['t']}
+                </div>
+            """, unsafe_allow_html=True)
             
     with v_col2:
+        # Apartado de Ambos Anotan
         st.markdown("#### ⚽ Probabilidades Clave")
-        st.markdown(f'<div class="btts-card"><span style="color:#aaa; font-size:0.85em;">AMBOS ANOTAN</span><br><span style="color:white; font-weight:bold;">SÍ: {res["BTTS"][0]:.1f}%</span> | <span style="color:#aaa;">NO: {res["BTTS"][1]:.1f}%</span></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class="btts-card">
+                <span style="color:#aaa; font-size:0.85em;">AMBOS ANOTAN</span><br>
+                <span style="color:white; font-weight:bold;">SÍ: {res['BTTS'][0]:.1f}%</span> | 
+                <span style="color:#aaa;">NO: {res['BTTS'][1]:.1f}%</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Top 3 Marcadores
         st.markdown("<p style='margin-bottom:10px; font-size:0.9em; color:#00ffcc; font-weight:bold;'>TOP 3 MARCADORES</p>", unsafe_allow_html=True)
         for i, (score, prob) in enumerate(res['TOP']):
-            st.markdown(f'<div class="score-badge" style="margin-bottom:8px;"><span style="color:#00ffcc; font-weight:bold;">#{i+1}</span> | <span style="font-size:1.1em; color:white;">{score}</span> <span style="color:#aaa; font-size:0.8em;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="score-badge" style="margin-bottom:8px;">
+                    <span style="color:#00ffcc; font-weight:bold;">#{i+1}</span> | 
+                    <span style="font-size:1.1em; color:white;">{score}</span> 
+                    <span style="color:#aaa; font-size:0.8em;">({prob:.1f}%)</span>
+                </div>
+            """, unsafe_allow_html=True)
 
-    resumen_wa = f"📊 *Análisis ProStats OR936*\n⚽ {nl} vs {nv}\n\n🔥 *Sugerencias:*\n"
+    # Botón WhatsApp
+    resumen_wa = f"📊 *Análisis ProStats OR936*\n⚽ {nl} vs {nv}\n\n"
+    resumen_wa += f"🔥 *Sugerencias:*\n"
     for s in sugerencias: resumen_wa += f"✅ {s['t']} ({s['p']:.1f}%)\n"
+    resumen_wa += f"\n🥅 *Ambos Anotan:* {'SÍ' if res['BTTS'][0] > 50 else 'NO'} ({max(res['BTTS']):.1f}%)\n"
+    resumen_wa += f"\n⚽ *Marcador Probable:* {res['TOP'][0][0]}"
+    
     url_wa = f"https://wa.me/?text={urllib.parse.quote(resumen_wa)}"
     st.markdown(f'<a href="{url_wa}" target="_blank" class="share-btn">📲 COMPARTIR ESTE ANÁLISIS</a>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # --- PESTAÑAS DETALLADAS ---
     tab1, tab2, tab3, tab4 = st.tabs(["🏆 1X2 & DC", "🥅 Goles", "🚩 Especiales", "📊 Matriz"])
 
     with tab1:
@@ -293,10 +245,12 @@ if st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True):
         tj, co = st.columns(2)
         with tj:
             st.write("🎴 **Tarjetas**")
-            for k, v in res['TARJETAS'].items(): st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
+            for k, v in res['TARJETAS'].items():
+                st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
         with co:
             st.write("🚩 **Corners**")
-            for k, v in res['CORNERS'].items(): st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
+            for k, v in res['CORNERS'].items():
+                st.write(f"L {k}: O {v[0]:.1f}% | U {v[1]:.1f}%")
 
     with tab4:
         df_m = pd.DataFrame(res['MATRIZ'])

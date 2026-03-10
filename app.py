@@ -129,23 +129,30 @@ with st.sidebar:
     if eventos and isinstance(eventos, list):
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
         p_sel = st.selectbox("Partidos Detectados", list(op_p.keys()))
+        
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings:
                 # --- ACTUALIZACIÓN AUTOMÁTICA PROMEDIO GOLES LIGA ---
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                st.session_state['p_liga_auto'] = total_g / (total_pj / 2) if total_pj > 0 else 2.5
+                nuevo_promedio = total_g / (total_pj / 2) if total_pj > 0 else 2.5
+                st.session_state['p_liga_auto'] = float(nuevo_promedio)
                 
                 def buscar(n):
                     for t in standings: 
                         if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
                     return None
+                
                 dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
                 if dl and dv:
-                    st.session_state['lgf_auto'], st.session_state['lgc_auto'] = float(dl['overall_league_GF'])/int(dl['overall_league_payed']), float(dl['overall_league_GA'])/int(dl['overall_league_payed'])
-                    st.session_state['vgf_auto'], st.session_state['vgc_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed']), float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
+                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/int(dl['overall_league_payed'])
+                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/int(dl['overall_league_payed'])
+                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed'])
+                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
+                    # RECARGA FORZADA PARA ACTUALIZAR SLIDER Y DATOS
+                    st.rerun()
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
@@ -167,8 +174,8 @@ with col_v:
     vgc = c4.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
     vtj, vco = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2), c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
-# Promedio dinámico
-p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, st.session_state.get('p_liga_auto', 2.5))
+# Promedio dinámico (Si p_liga_auto existe, el slider lo toma siempre como valor inicial)
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, float(st.session_state.get('p_liga_auto', 2.5)))
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
@@ -176,7 +183,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # 1X2 BARRA ÚNICA
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
     
     # --- SUGERENCIAS EXPANDIDAS (6 OPCIONES) ---
@@ -203,7 +209,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- PESTAÑAS ---
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
     
     with tab_dc:

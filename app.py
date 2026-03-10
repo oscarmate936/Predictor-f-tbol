@@ -2,9 +2,10 @@ import streamlit as st
 import math
 import pandas as pd
 import plotly.express as px
-import urllib.parse
 import requests
 from datetime import datetime
+import difflib
+import urllib.parse  # Necesario para codificar el mensaje de WhatsApp
 
 # =================================================================
 # CONFIGURACIÓN API (apiv3.apifootball.com)
@@ -12,9 +13,11 @@ from datetime import datetime
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estados críticos para persistencia
+# Inicialización de estados
 if 'p_liga_auto' not in st.session_state:
     st.session_state['p_liga_auto'] = 2.5
+if 'estilo_auto' not in st.session_state:
+    st.session_state['estilo_auto'] = "Equilibrada"
 
 @st.cache_data(ttl=3600)
 def api_request(action, params={}):
@@ -24,6 +27,10 @@ def api_request(action, params={}):
         return res.json() if res.status_code == 200 else []
     except:
         return []
+
+def get_best_match(name, choices):
+    matches = difflib.get_close_matches(name, choices, n=1, cutoff=0.4)
+    return matches[0] if matches else None
 
 # =================================================================
 # COMPONENTES VISUALES
@@ -45,14 +52,16 @@ def triple_bar(p1, px, p2, n1, nx, n2):
         </div>
     """, unsafe_allow_html=True)
 
-def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
+def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc", is_value=False):
+    border = "2px solid #f1c40f" if is_value else "1px solid rgba(255,255,255,0.05)"
+    bg = "rgba(241, 196, 15, 0.1)" if is_value else "transparent"
     st.markdown(f"""
-        <div style="margin-bottom: 15px;">
+        <div style="margin-bottom: 15px; padding: 5px; border-radius: 8px; border: {border}; background: {bg};">
             <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
-                <span><b>{label_over}:</b> {prob_over:.1f}%</span>
+                <span><b>{label_over}:</b> {prob_over:.1f}% {"⭐" if is_value else ""}</span>
                 <span><b>{label_under}:</b> {prob_under:.1f}%</span>
             </div>
-            <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden;">
                 <div style="width: {prob_over}%; background: {color};"></div>
                 <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
             </div>
@@ -60,28 +69,48 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# MOTOR MATEMÁTICO (PRO STATS ENGINE)
+# MOTOR MATEMÁTICO (ELITE PRO ENGINE)
 # =================================================================
 class MotorMatematico:
-    def __init__(self): self.rho = -0.15
+    def __init__(self, rho=-0.15): 
+        self.rho = rho
+        
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
         try: return (lam**k * math.exp(-lam)) / math.factorial(k)
         except: return 0.0
+
+    def neg_binomial_prob(self, k, mu, dispersion=1.5):
+        if mu <= 0: return 1.0 if k == 0 else 0.0
+        var = mu * dispersion
+        p = mu / var
+        r = (mu**2) / (var - mu) if (var - mu) != 0 else 100
+        try:
+            coeff = math.comb(int(k + r - 1), int(k))
+            return coeff * (p**r) * ((1 - p)**k)
+        except:
+            return self.poisson_prob(k, mu)
+
     def dixon_coles_ajuste(self, x, y, lam, mu):
         if x == 0 and y == 0: return 1 - (lam * mu * self.rho)
         elif x == 0 and y == 1: return 1 + (lam * self.rho)
         elif x == 1 and y == 0: return 1 + (mu * self.rho)
         elif x == 1 and y == 1: return 1 - self.rho
         return 1.0
-    def calcular_ou_prob(self, valor_esperado, threshold):
-        prob_under = sum(self.poisson_prob(k, valor_esperado) for k in range(int(math.floor(threshold)) + 1))
+
+    def calcular_ou_prob(self, valor_esperado, threshold, use_nb=False):
+        if use_nb:
+            prob_under = sum(self.neg_binomial_prob(k, valor_esperado) for k in range(int(math.floor(threshold)) + 1))
+        else:
+            prob_under = sum(self.poisson_prob(k, valor_esperado) for k in range(int(math.floor(threshold)) + 1))
         return (1 - prob_under) * 100, prob_under * 100
+
     def procesar(self, xg_l, xg_v, tj_total, co_total):
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
         g_probs = {t: [0.0, 0.0] for t in g_lines}
+        
         for i in range(10): 
             fila = []
             for j in range(10):
@@ -96,17 +125,23 @@ class MotorMatematico:
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
+            
         total = max(0.0001, p1 + px + p2)
-        return {"1X2": (p1/total*100, px/total*100, p2/total*100), "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
-                "BTTS": (btts_si/total*100, (1-btts_si/total)*100), "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
-                "TARJETAS": {t: self.calcular_ou_prob(tj_total, t) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
-                "CORNERS": {t: self.calcular_ou_prob(co_total, t) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
-                "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], "MATRIZ": matriz}
+        return {
+            "1X2": (p1/total*100, px/total*100, p2/total*100),
+            "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
+            "BTTS": (btts_si/total*100, (1-btts_si/total)*100),
+            "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
+            "TARJETAS": {t: self.calcular_ou_prob(tj_total, t, True) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
+            "CORNERS": {t: self.calcular_ou_prob(co_total, t, True) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
+            "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
+            "MATRIZ": matriz
+        }
 
 # =================================================================
 # INTERFAZ Y SIDEBAR
 # =================================================================
-st.set_page_config(page_title="OR936 Elite v3.2", layout="wide")
+st.set_page_config(page_title="OR936 Elite v3.3 Auto", layout="wide")
 
 st.markdown("""
     <style>
@@ -128,6 +163,13 @@ with st.sidebar:
     nombre_liga = st.selectbox("Selecciona Liga", list(ligas_api.keys()))
     fecha_analisis = st.date_input("Fecha", datetime.now())
     
+    estilo_liga = st.select_slider("Estilo de Liga (Auto-detectado)", 
+                                  options=["Ultra-Ofensiva", "Equilibrada", "Defensiva"], 
+                                  value=st.session_state['estilo_auto'])
+    
+    rho_map = {"Ultra-Ofensiva": -0.05, "Equilibrada": -0.15, "Defensiva": -0.22}
+    rho_selected = rho_map[estilo_liga]
+
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
     if eventos and isinstance(eventos, list):
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
@@ -140,25 +182,37 @@ with st.sidebar:
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
                 
+                if nuevo_promedio > 2.85:
+                    st.session_state['estilo_auto'] = "Ultra-Ofensiva"
+                elif nuevo_promedio < 2.45:
+                    st.session_state['estilo_auto'] = "Defensiva"
+                else:
+                    st.session_state['estilo_auto'] = "Equilibrada"
+                
                 st.session_state['p_liga_auto'] = nuevo_promedio
-                if 'p_liga_slider_key' in st.session_state:
-                    st.session_state['p_liga_slider_key'] = nuevo_promedio
                 
-                def buscar(n):
-                    for t in standings: 
-                        if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
-                    return None
+                nombres_api = [t['team_name'] for t in standings]
+                match_l = get_best_match(op_p[p_sel]['match_hometeam_name'], nombres_api)
+                match_v = get_best_match(op_p[p_sel]['match_awayteam_name'], nombres_api)
                 
-                dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
+                dl = next((t for t in standings if t['team_name'] == match_l), None)
+                dv = next((t for t in standings if t['team_name'] == match_v), None)
+
                 if dl and dv:
-                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/int(dl['overall_league_payed'])
-                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/int(dl['overall_league_payed'])
-                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed'])
-                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
+                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/max(1, int(dl['overall_league_payed']))
+                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/max(1, int(dl['overall_league_payed']))
+                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/max(1, int(dv['overall_league_payed']))
+                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/max(1, int(dv['overall_league_payed']))
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
 
-st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.3 AUTO</h1>", unsafe_allow_html=True)
+
+with st.expander("💰 CONFIGURAR CUOTAS (VALUE BET DETECTOR)"):
+    c1, c2, c3 = st.columns(3)
+    odd_1 = c1.number_input("Cuota Local (1)", 1.0, 50.0, 2.0)
+    odd_x = c2.number_input("Cuota Empate (X)", 1.0, 50.0, 3.4)
+    odd_2 = c3.number_input("Cuota Visita (2)", 1.0, 50.0, 3.8)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -177,53 +231,63 @@ with col_v:
     vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
-p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'], key='p_liga_slider_key')
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'])
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
-    motor = MotorMatematico()
+    motor = MotorMatematico(rho=rho_selected)
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # SUGERENCIAS Y MARCADORES (MASTER CARD)
+    # SUGERENCIAS
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
-    pool.append({"t": "Doble Oportunidad 12", "p": res['DC'][2]})
     pool.append({"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
-    pool.append({"t": "Ambos Anotan: NO", "p": res['BTTS'][1]})
-    for line, p in res['GOLES'].items():
-        if 1.5 <= line <= 3.5:
-            pool.append({"t": f"Over {line} Goles", "p": p[0]})
-            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+    for line in [1.5, 2.5, 3.5]:
+        p = res['GOLES'][line]
+        pool.append({"t": f"Over {line} Goles", "p": p[0]})
     sug = sorted([s for s in pool if 65 < s['p'] < 96], key=lambda x: x['p'], reverse=True)[:6]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
-        st.markdown("#### 💎 Top 6 Sugerencias Maestras")
+        st.markdown(f"#### 💎 Sugerencias Maestras ({estilo_liga})")
         for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
-        st.markdown("#### ⚽ Marcadores")
+        st.markdown("#### ⚽ Marcadores Probables")
         for i, (score, prob) in enumerate(res['TOP']):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
+    
+    # --- BOTÓN DE WHATSAPP ---
+    texto_wa = f"📊 *ANÁLISIS ELITE OR936* 📊\n"
+    texto_wa += f"⚽ {nl} vs {nv}\n"
+    texto_wa += f"🏆 Estilo: {estilo_liga}\n\n"
+    texto_wa += f"💎 *Sugerencias:* \n"
+    for s in sug:
+        texto_wa += f"• {s['t']}: {s['p']:.1f}%\n"
+    texto_wa += f"\n🥅 *Top Marcadores:* \n"
+    for score, prob in res['TOP']:
+        texto_wa += f"• {score} ({prob:.1f}%)\n"
+    
+    encoded_text = urllib.parse.quote(texto_wa)
+    whatsapp_url = f"https://wa.me/?text={encoded_text}"
+    
+    st.link_button("📲 COMPARTIR ANÁLISIS EN WHATSAPP", whatsapp_url, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- APARTADO 1X2 ANTES DE TABS ---
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
 
-    # --- PESTAÑAS ---
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
     
     with tab_dc:
-        dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 (Visitante Directo)", 100-res['DC'][0], color="#9b59b6")
-        dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 (Local Directo)", 100-res['DC'][1], color="#f39c12")
-        dual_bar_explicit(f"12 (Local o Visitante)", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
+        dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#9b59b6")
+        dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#f39c12")
     
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
+            for line in [1.5, 2.5, 3.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
         with gb:
@@ -241,6 +305,11 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
     
     with tab_m:
-        st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
+        df_matriz = pd.DataFrame(res['MATRIZ'], 
+                                columns=[f"{nv} {i}" for i in range(6)], 
+                                index=[f"{nl} {i}" for i in range(6)])
+        fig = px.imshow(df_matriz, text_auto=".1f", color_continuous_scale='Viridis', aspect="auto")
+        fig.update_layout(xaxis_title="Goles Visitante", yaxis_title="Goles Local")
+        st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Consistencia Visual OK</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.3 | Estilo: {estilo_liga} (GPM: {st.session_state['p_liga_auto']:.2f})</p>", unsafe_allow_html=True)

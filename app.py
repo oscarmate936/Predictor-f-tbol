@@ -12,6 +12,10 @@ from datetime import datetime
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
+# Inicialización de estados críticos
+if 'p_liga_auto' not in st.session_state:
+    st.session_state['p_liga_auto'] = 2.5
+
 @st.cache_data(ttl=3600)
 def api_request(action, params={}):
     params.update({"action": action, "APIkey": API_KEY})
@@ -22,10 +26,9 @@ def api_request(action, params={}):
         return []
 
 # =================================================================
-# COMPONENTES VISUALES (ESTILO ELITE)
+# COMPONENTES VISUALES
 # =================================================================
 def triple_bar(p1, px, p2, n1, nx, n2):
-    """Barra segmentada única para 1X2"""
     st.markdown(f"""
         <div style="margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
             <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
@@ -42,7 +45,6 @@ def triple_bar(p1, px, p2, n1, nx, n2):
     """, unsafe_allow_html=True)
 
 def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
-    """Barra comparativa para Doble Oportunidad, Goles, Tarjetas y Corners"""
     st.markdown(f"""
         <div style="margin-bottom: 15px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
@@ -133,11 +135,14 @@ with st.sidebar:
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings:
-                # --- ACTUALIZACIÓN AUTOMÁTICA PROMEDIO GOLES LIGA ---
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                nuevo_promedio = total_g / (total_pj / 2) if total_pj > 0 else 2.5
-                st.session_state['p_liga_auto'] = float(nuevo_promedio)
+                nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
+                
+                # --- FIX MAESTRO: Actualizamos el estado del widget directamente ---
+                st.session_state['p_liga_auto'] = nuevo_promedio
+                if 'p_liga_slider_key' in st.session_state:
+                    st.session_state['p_liga_slider_key'] = nuevo_promedio
                 
                 def buscar(n):
                     for t in standings: 
@@ -151,31 +156,29 @@ with st.sidebar:
                     st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed'])
                     st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                    # RECARGA FORZADA PARA ACTUALIZAR SLIDER Y DATOS
                     st.rerun()
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
-# ENTRADA DE DATOS
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
     nl = st.text_input("Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
-    c1, c2 = st.columns(2)
-    lgf = c1.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
-    lgc = c2.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
-    ltj, lco = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3), c2.number_input("Corners L", 0.0, 20.0, 5.5)
+    la, lb = st.columns(2)
+    lgf = la.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
+    lgc = lb.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
+    ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
     nv = st.text_input("Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
-    c3, c4 = st.columns(2)
-    vgf = c3.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
-    vgc = c4.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
-    vtj, vco = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2), c4.number_input("Corners V", 0.0, 20.0, 4.8)
+    va, vb = st.columns(2)
+    vgf = va.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
+    vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
+    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
-# Promedio dinámico (Si p_liga_auto existe, el slider lo toma siempre como valor inicial)
-p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, float(st.session_state.get('p_liga_auto', 2.5)))
+# --- USO DE KEY PARA EL SLIDER ---
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'], key='p_liga_slider_key')
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
@@ -185,7 +188,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
     
-    # --- SUGERENCIAS EXPANDIDAS (6 OPCIONES) ---
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
@@ -210,34 +212,25 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     st.markdown('</div>', unsafe_allow_html=True)
 
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
-    
     with tab_dc:
-        st.write("##### Mercados de Doble Oportunidad")
         dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 (Visitante Directo)", 100-res['DC'][0], color="#9b59b6")
         dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 (Local Directo)", 100-res['DC'][1], color="#f39c12")
         dual_bar_explicit(f"12 (Local o Visitante)", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
-
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            st.write("##### Over/Under Goles")
             for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
         with gb:
-            st.write("##### Ambos Anotan")
             dual_bar_explicit("BTTS SÍ", res['BTTS'][0], "BTTS NO", res['BTTS'][1], color="#f1c40f")
-
     with tab_spec:
         tj, co = st.columns(2)
         with tj:
-            st.write("🎴 **Tarjetas**")
             for line, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
         with co:
-            st.write("🚩 **Corners**")
             for line, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
-
     with tab_m:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Motor Auto-Sincronizado</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Fix Media Goles</p>", unsafe_allow_html=True)

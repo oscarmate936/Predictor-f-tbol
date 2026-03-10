@@ -30,7 +30,7 @@ def api_request(action, params={}):
 # =================================================================
 def triple_bar(p1, px, p2, n1, nx, n2):
     st.markdown(f"""
-        <div style="margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
+        <div style="margin-top: 25px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
             <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
                 <span>{n1}: <b>{p1:.1f}%</b></span>
                 <span>{nx}: <b>{px:.1f}%</b></span>
@@ -54,6 +54,19 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
             <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
                 <div style="width: {prob_over}%; background: {color};"></div>
                 <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+def single_prog_bar(label, prob, color="#00ffcc"):
+    st.markdown(f"""
+        <div style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #ddd; margin-bottom: 2px;">
+                <span>{label}</span>
+                <span>{prob:.1f}%</span>
+            </div>
+            <div style="background: #222; height: 8px; border-radius: 4px; overflow: hidden;">
+                <div style="width: {prob}%; background: {color}; height: 100%;"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -139,7 +152,6 @@ with st.sidebar:
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
                 
-                # --- FIX MAESTRO: Actualizamos el estado del widget directamente ---
                 st.session_state['p_liga_auto'] = nuevo_promedio
                 if 'p_liga_slider_key' in st.session_state:
                     st.session_state['p_liga_slider_key'] = nuevo_promedio
@@ -177,7 +189,6 @@ with col_v:
     vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
-# --- USO DE KEY PARA EL SLIDER ---
 p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'], key='p_liga_slider_key')
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
@@ -185,8 +196,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
-    
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
     
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
@@ -212,10 +221,12 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     st.markdown('</div>', unsafe_allow_html=True)
 
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
+    
     with tab_dc:
         dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 (Visitante Directo)", 100-res['DC'][0], color="#9b59b6")
         dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 (Local Directo)", 100-res['DC'][1], color="#f39c12")
         dual_bar_explicit(f"12 (Local o Visitante)", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
+    
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
@@ -224,13 +235,26 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
         with gb:
             dual_bar_explicit("BTTS SÍ", res['BTTS'][0], "BTTS NO", res['BTTS'][1], color="#f1c40f")
+    
     with tab_spec:
-        tj, co = st.columns(2)
-        with tj:
-            for line, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
-        with co:
-            for line, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
+        tj_sec, co_sec = st.columns(2)
+        with tj_sec:
+            st.markdown("##### 🎴 Mercado de Tarjetas")
+            t_col1, t_col2 = st.columns(2)
+            for line, p in res['TARJETAS'].items():
+                with t_col1:
+                    single_prog_bar(f"Over {line}", p[0], color="#e74c3c")
+                with t_col2:
+                    single_prog_bar(f"Under {line}", p[1], color="#ff8c00")
+        with co_sec:
+            st.markdown("##### 🚩 Mercado de Corners")
+            for line, p in res['CORNERS'].items(): 
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
+    
     with tab_m:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Fix Media Goles</p>", unsafe_allow_html=True)
+    # --- BARRA 1X2 MOVIDA HACIA ABAJO ---
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
+
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Fix Visual Tarjetas & 1X2</p>", unsafe_allow_html=True)

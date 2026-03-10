@@ -1,8 +1,7 @@
-Import streamlit as st
+import streamlit as st
 import math
 import pandas as pd
 import plotly.express as px
-import urllib.parse
 import requests
 from datetime import datetime
 
@@ -15,9 +14,14 @@ BASE_URL = "https://apiv3.apifootball.com/"
 # Inicialización de estados críticos para persistencia
 if 'p_liga_auto' not in st.session_state:
     st.session_state['p_liga_auto'] = 2.5
+if 'nl_auto' not in st.session_state:
+    st.session_state['nl_auto'] = "Local"
+if 'nv_auto' not in st.session_state:
+    st.session_state['nv_auto'] = "Visitante"
 
 @st.cache_data(ttl=3600)
-def api_request(action, params={}):
+def api_request(action, params=None):
+    if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY})
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
@@ -28,18 +32,18 @@ def api_request(action, params={}):
 # =================================================================
 # COMPONENTES VISUALES
 # =================================================================
-def triple_bar(p1, px, p2, n1, nx, n2):
+def triple_bar(p1, px_val, p2, n1, nx, n2):
     st.markdown(f"""
         <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
             <p style='color:#00ffcc; font-size:0.9em; font-weight:bold; margin-bottom:10px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
             <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
                 <span>{n1}: <b>{p1:.1f}%</b></span>
-                <span>{nx}: <b>{px:.1f}%</b></span>
+                <span>{nx}: <b>{px_val:.1f}%</b></span>
                 <span>{n2}: <b>{p2:.1f}%</b></span>
             </div>
             <div style="display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #333;">
                 <div style="width: {p1}%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc55;"></div>
-                <div style="width: {px}%; background: #444;"></div>
+                <div style="width: {px_val}%; background: #444;"></div>
                 <div style="width: {p2}%; background: #3498db;"></div>
             </div>
         </div>
@@ -63,25 +67,31 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # MOTOR MATEMÁTICO (PRO STATS ENGINE)
 # =================================================================
 class MotorMatematico:
-    def __init__(self): self.rho = -0.15
+    def __init__(self): 
+        self.rho = -0.15
+        
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
         try: return (lam**k * math.exp(-lam)) / math.factorial(k)
         except: return 0.0
+        
     def dixon_coles_ajuste(self, x, y, lam, mu):
         if x == 0 and y == 0: return 1 - (lam * mu * self.rho)
         elif x == 0 and y == 1: return 1 + (lam * self.rho)
         elif x == 1 and y == 0: return 1 + (mu * self.rho)
         elif x == 1 and y == 1: return 1 - self.rho
         return 1.0
+        
     def calcular_ou_prob(self, valor_esperado, threshold):
         prob_under = sum(self.poisson_prob(k, valor_esperado) for k in range(int(math.floor(threshold)) + 1))
         return (1 - prob_under) * 100, prob_under * 100
+        
     def procesar(self, xg_l, xg_v, tj_total, co_total):
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
         g_probs = {t: [0.0, 0.0] for t in g_lines}
+        
         for i in range(10): 
             fila = []
             for j in range(10):
@@ -89,19 +99,29 @@ class MotorMatematico:
                 if i > j: p1 += p
                 elif i == j: px += p
                 else: p2 += p
+                
                 if i > 0 and j > 0: btts_si += p
+                
                 for t in g_lines:
                     if (i + j) > t: g_probs[t][0] += p
                     else: g_probs[t][1] += p
+                    
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
+            
         total = max(0.0001, p1 + px + p2)
-        return {"1X2": (p1/total*100, px/total*100, p2/total*100), "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
-                "BTTS": (btts_si/total*100, (1-btts_si/total)*100), "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
-                "TARJETAS": {t: self.calcular_ou_prob(tj_total, t) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
-                "CORNERS": {t: self.calcular_ou_prob(co_total, t) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
-                "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], "MATRIZ": matriz}
+        # CORRECCIÓN: Se retornan 3 valores en DC (1X, X2, 12)
+        return {
+            "1X2": (p1/total*100, px/total*100, p2/total*100), 
+            "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
+            "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
+            "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
+            "TARJETAS": {t: self.calcular_ou_prob(tj_total, t) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
+            "CORNERS": {t: self.calcular_ou_prob(co_total, t) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
+            "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
+            "MATRIZ": matriz
+        }
 
 # =================================================================
 # INTERFAZ Y SIDEBAR
@@ -129,20 +149,19 @@ with st.sidebar:
     fecha_analisis = st.date_input("Fecha", datetime.now())
     
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
-    if eventos and isinstance(eventos, list):
+    
+    if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
         p_sel = st.selectbox("Partidos Detectados", list(op_p.keys()))
         
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
-            if standings:
+            if standings and isinstance(standings, list):
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
                 
                 st.session_state['p_liga_auto'] = nuevo_promedio
-                if 'p_liga_slider_key' in st.session_state:
-                    st.session_state['p_liga_slider_key'] = nuevo_promedio
                 
                 def buscar(n):
                     for t in standings: 
@@ -157,30 +176,33 @@ with st.sidebar:
                     st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
+    else:
+        st.warning("No se detectaron eventos para esta fecha/liga.")
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
+    nl = st.text_input("Nombre Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
     la, lb = st.columns(2)
-    lgf = la.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
-    lgc = lb.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
-    ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
+    lgf = la.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7), step=0.1)
+    lgc = lb.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2), step=0.1)
+    ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3, step=0.1), lb.number_input("Corners L", 0.0, 20.0, 5.5, step=0.1)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
+    nv = st.text_input("Nombre Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
     va, vb = st.columns(2)
-    vgf = va.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
-    vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
-    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
+    vgf = va.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5), step=0.1)
+    vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1), step=0.1)
+    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2, step=0.1), vb.number_input("Corners V", 0.0, 20.0, 4.8, step=0.1)
 
-p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'], key='p_liga_slider_key')
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'])
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
+    # Lógica de xG basada en fuerza de ataque y defensa relativa a la liga
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
@@ -192,38 +214,44 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     pool.append({"t": "Doble Oportunidad 12", "p": res['DC'][2]})
     pool.append({"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
     pool.append({"t": "Ambos Anotan: NO", "p": res['BTTS'][1]})
+    
     for line, p in res['GOLES'].items():
         if 1.5 <= line <= 3.5:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
-    sug = sorted([s for s in pool if 65 < s['p'] < 96], key=lambda x: x['p'], reverse=True)[:6]
+            
+    # Filtrar sugerencias con probabilidad sólida
+    sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
         st.markdown("#### 💎 Top 6 Sugerencias Maestras")
-        for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
+        if sug:
+            for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
+        else:
+            st.info("No se encontraron mercados con alta probabilidad definida.")
     with v2:
-        st.markdown("#### ⚽ Marcadores")
+        st.markdown("#### ⚽ Marcadores Probables")
         for i, (score, prob) in enumerate(res['TOP']):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- APARTADO 1X2 ANTES DE TABS ---
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
+    # --- APARTADO 1X2 ---
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
 
     # --- PESTAÑAS ---
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
     
     with tab_dc:
-        dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 (Visitante Directo)", 100-res['DC'][0], color="#9b59b6")
-        dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 (Local Directo)", 100-res['DC'][1], color="#f39c12")
-        dual_bar_explicit(f"12 (Local o Visitante)", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
+        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 ({nv} Directo)", 100-res['DC'][0], color="#9b59b6")
+        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 ({nl} Directo)", 100-res['DC'][1], color="#f39c12")
+        dual_bar_explicit(f"12 ({nl} o {nv})", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
     
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
+            for line in [0.5, 1.5, 2.5, 3.5, 4.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
         with gb:
@@ -241,6 +269,14 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
     
     with tab_m:
-        st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
+        st.markdown("##### 💡 Probabilidades de Marcador Exacto")
+        df_matriz = pd.DataFrame(res['MATRIZ'])
+        fig = px.imshow(df_matriz, 
+                        labels=dict(x="Goles Visitante", y="Goles Local", color="Prob %"),
+                        x=[str(i) for i in range(6)],
+                        y=[str(i) for i in range(6)],
+                        color_continuous_scale='Viridis', text_auto=".1f")
+        st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Consistencia Visual OK</p>", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.2 | Motor Dixon-Coles Optimizado | Consistencia Visual OK</p>", unsafe_allow_html=True)

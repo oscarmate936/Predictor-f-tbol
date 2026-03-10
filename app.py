@@ -24,48 +24,21 @@ def api_request(action, params={}):
 # =================================================================
 # ESTILOS CSS PROFESIONALES (ELITE UI)
 # =================================================================
-st.set_page_config(page_title="OR936 Elite v3.0", layout="wide")
+st.set_page_config(page_title="OR936 Elite v3.1", layout="wide")
 
 st.markdown("""
     <style>
-    /* Fondo y Contenedores */
     .stApp { background-color: #0e1117; }
-    .main-panel {
-        background: #161b22;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #30363d;
-        margin-bottom: 20px;
-    }
     .input-card {
-        background: #0d1117;
-        padding: 20px;
-        border-radius: 12px;
-        border-top: 4px solid #00ffcc;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        background: #161b22; padding: 20px; border-radius: 12px;
+        border-top: 4px solid #00ffcc; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    .metric-card {
-        background: #1c2128;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-        border: 1px solid #30363d;
-    }
-    /* Botón Principal */
     .stButton>button {
-        width: 100%;
-        background: linear-gradient(90deg, #00ffcc 0%, #008577 100%);
-        color: black !important;
-        font-weight: bold;
-        border: none;
-        padding: 12px;
-        border-radius: 10px;
-        transition: 0.3s;
+        width: 100%; background: linear-gradient(90deg, #00ffcc 0%, #008577 100%);
+        color: black !important; font-weight: bold; border: none;
+        padding: 12px; border-radius: 10px;
     }
-    .stButton>button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 20px rgba(0,255,204,0.4);
-    }
+    .market-label { font-size: 0.85em; color: #888; margin-bottom: 2px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -75,30 +48,31 @@ st.markdown("""
 def triple_bar(p1, px, p2, n1, nx, n2):
     """Barra segmentada única para 1X2"""
     st.markdown(f"""
-        <div style="margin-bottom: 25px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 6px; color: #aaa;">
+        <div style="margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 8px; color: #eee;">
                 <span>{n1}: <b>{p1:.1f}%</b></span>
-                <span>{nx}: <b>{px:.1f}%</b></span>
+                <span>Empate: <b>{px:.1f}%</b></span>
                 <span>{n2}: <b>{p2:.1f}%</b></span>
             </div>
-            <div style="display: flex; height: 24px; border-radius: 12px; overflow: hidden; border: 1px solid #30363d;">
-                <div style="width: {p1}%; background: #00ffcc; display: flex; align-items: center; justify-content: center; color: black; font-weight: bold; font-size: 0.7em;">1</div>
-                <div style="width: {px}%; background: #444; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.7em;">X</div>
-                <div style="width: {p2}%; background: #3498db; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.7em;">2</div>
+            <div style="display: flex; height: 20px; border-radius: 10px; overflow: hidden; border: 1px solid #444;">
+                <div style="width: {p1}%; background: #00ffcc;"></div>
+                <div style="width: {px}%; background: #555;"></div>
+                <div style="width: {p2}%; background: #3498db;"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-def dual_bar(label_left, prob_left, label_right, prob_right, color="#00ffcc"):
-    """Barra O/U simplificada"""
+def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color_over="#00ffcc", color_under="#ff4b4b"):
+    """Barra doble explícita para Over/Under y BTTS"""
     st.markdown(f"""
-        <div style="margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #ddd;">
-                <span>{label_left} ({prob_left:.1f}%)</span>
-                <span>{prob_right:.1f}%</span>
+        <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
+                <span><b>{label_over}:</b> {prob_over:.1f}%</span>
+                <span><b>{label_under}:</b> {prob_under:.1f}%</span>
             </div>
-            <div style="background: #222; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 4px;">
-                <div style="width: {prob_left}%; background: {color}; height: 100%;"></div>
+            <div style="display: flex; background: #222; height: 12px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="width: {prob_over}%; background: {color_over}; box-shadow: 0 0 10px {color_over}44;"></div>
+                <div style="width: {prob_under}%; background: {color_under}66; border-left: 1px solid rgba(255,255,255,0.1);"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -148,19 +122,18 @@ class MotorMatematico:
                 "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], "MATRIZ": matriz}
 
 # =================================================================
-# INTERFAZ DE ENTRADA (PROFESSIONAL CONSOLE)
+# INTERFAZ (SIDEBAR Y DASHBOARD)
 # =================================================================
 with st.sidebar:
-    st.markdown("### 🌐 CONEXIÓN DATA-FEED")
+    st.markdown("### 🌐 DATA CONSOLE")
     ligas_api = {"La Liga": 302, "Premier League": 152, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, 
                  "UCL": 3, "Libertadores": 13, "Brasileirão": 99, "Liga Mayor SLV": 601, "Copa Presidente SLV": 603}
-    nombre_liga = st.selectbox("Competición", list(ligas_api.keys()))
-    fecha_analisis = st.date_input("Fecha", datetime.now())
-    
+    nombre_liga = st.selectbox("Liga", list(ligas_api.keys()))
+    fecha_analisis = st.date_input("Fecha Partido", datetime.now())
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
     if eventos and isinstance(eventos, list):
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("Partidos Hoy", list(op_p.keys()))
+        p_sel = st.selectbox("Partidos Disponibles", list(op_p.keys()))
         if st.button("⚡ SINCRONIZAR API"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings:
@@ -175,45 +148,36 @@ with st.sidebar:
                     st.session_state['vgf_auto'], st.session_state['vgc_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed']), float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-st.markdown("<h2 style='text-align: center; color: #00ffcc; letter-spacing: 2px;'>OR936 ELITE CONTROL PANEL</h2>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc; font-size: 2.2em;'>OR936 ELITE CONTROL PANEL</h1>", unsafe_allow_html=True)
 
-# CONTENEDOR DE DATOS
 with st.container():
-    col1, col2, col3 = st.columns([1, 0.1, 1])
-    
-    with col1:
-        st.markdown(f"<div class='input-card'>", unsafe_allow_html=True)
-        nl = st.text_input("EQUIPO LOCAL", st.session_state.get('nl_auto', "Local"), key="nl")
-        c1, c2 = st.columns(2)
-        lgf = c1.number_input("Goles Favor", 0.0, 10.0, st.session_state.get('lgf_auto', 1.5))
-        lgc = c2.number_input("Goles Contra", 0.0, 10.0, st.session_state.get('lgc_auto', 1.0))
-        ltj = c1.number_input("Tarjetas Prom.", 0.0, 15.0, 2.1)
-        lco = c2.number_input("Corners Prom.", 0.0, 20.0, 5.2)
+    c1, spacer, c2 = st.columns([1, 0.1, 1])
+    with c1:
+        st.markdown("<div class='input-card'>", unsafe_allow_html=True)
+        nl = st.text_input("LOCAL", st.session_state.get('nl_auto', "Local"))
+        la, lb = st.columns(2)
+        lgf, lgc = la.number_input("Goles Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.5)), lb.number_input("Goles Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.0))
+        ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.0), lb.number_input("Corners L", 0.0, 20.0, 5.0)
+        st.markdown("</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div class='input-card' style='border-top-color: #3498db;'>", unsafe_allow_html=True)
+        nv = st.text_input("VISITANTE", st.session_state.get('nv_auto', "Visitante"))
+        va, vb = st.columns(2)
+        vgf, vgc = va.number_input("Goles Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.3)), vb.number_input("Goles Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.2))
+        vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.5), vb.number_input("Corners V", 0.0, 20.0, 4.5)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with col3:
-        st.markdown(f"<div class='input-card' style='border-top-color: #3498db;'>", unsafe_allow_html=True)
-        nv = st.text_input("EQUIPO VISITANTE", st.session_state.get('nv_auto', "Visitante"), key="nv")
-        c3, c4 = st.columns(2)
-        vgf = c3.number_input("Goles Favor ", 0.0, 10.0, st.session_state.get('vgf_auto', 1.3))
-        vgc = c4.number_input("Goles Contra ", 0.0, 10.0, st.session_state.get('vgc_auto', 1.2))
-        vtj = c3.number_input("Tarjetas Prom. ", 0.0, 15.0, 2.4)
-        vco = c4.number_input("Corners Prom. ", 0.0, 20.0, 4.8)
-        st.markdown("</div>", unsafe_allow_html=True)
+p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, st.session_state.get('p_liga_auto', 2.5))
 
-p_liga = st.slider("Media Goles Liga", 0.5, 5.0, st.session_state.get('p_liga_auto', 2.5))
-
-if st.button("🔥 EJECUTAR ALGORITMO DE PREDICCIÓN"):
+if st.button("🚀 EJECUTAR ANÁLISIS"):
     motor = MotorMatematico()
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # 1X2 - BARRA ÚNICA
-    st.markdown("### 📊 Distribución de Probabilidades 1X2")
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
     
-    t1, t2, t3, t4 = st.tabs(["💎 VERDICTO", "🥅 GOLES/BTTS", "🚩 ESPECIALES", "📊 MATRIZ"])
+    t1, t2, t3, t4, t5 = st.tabs(["💎 VERDICTO", "🥅 GOLES", "🎴 TARJETAS", "🚩 CORNERS", "📊 MATRIZ"])
     
     with t1:
         col_v1, col_v2 = st.columns(2)
@@ -222,35 +186,41 @@ if st.button("🔥 EJECUTAR ALGORITMO DE PREDICCIÓN"):
             pool = [{"t": "Doble Op. 1X", "p": res['DC'][0]}, {"t": "Doble Op. X2", "p": res['DC'][1]}, {"t": "Ambos Anotan", "p": res['BTTS'][0]}]
             for line, p in res['GOLES'].items():
                 if 1.5 <= line <= 3.5: pool.append({"t": f"Over {line}", "p": p[0]})
-            sug = sorted([s for s in pool if 65 < s['p'] < 95], key=lambda x: x['p'], reverse=True)[:3]
+            sug = sorted([s for s in pool if 65 < s['p'] < 95], key=lambda x: x['p'], reverse=True)[:4]
             for s in sug: st.success(f"✅ {s['t']} ({s['p']:.1f}%)")
         with col_v2:
-            st.markdown("#### Marcadores")
+            st.markdown("#### Marcadores Exactos")
             for i, (score, prob) in enumerate(res['TOP']):
-                st.info(f"📍 {score} — {prob:.1f}%")
+                st.info(f"📍 {score} — Probabilidad: {prob:.1f}%")
 
     with t2:
-        c_g1, c_g2 = st.columns(2)
-        with c_g1:
-            st.write("##### Líneas de Goles")
+        ga, gb = st.columns(2)
+        with ga:
+            st.write("##### Líneas de Goles (Over vs Under)")
             for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
-                dual_bar(f"Over {line}", res['GOLES'][line][0], f"Under {line}", res['GOLES'][line][1])
-        with c_g2:
+                p = res['GOLES'][line]
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
+        with gb:
             st.write("##### Ambos Anotan")
-            dual_bar("SÍ Anotan", res['BTTS'][0], "NO Anotan", res['BTTS'][1], color="#f1c40f")
+            dual_bar_explicit("BTTS SÍ", res['BTTS'][0], "BTTS NO", res['BTTS'][1], color_over="#f1c40f", color_under="#444")
 
     with t3:
-        c_e1, c_e2 = st.columns(2)
-        with c_e1:
-            st.write("##### Tarjetas Totales")
-            for k, v in res['TARJETAS'].items(): dual_bar(f"Over {k}", v[0], f"Under {k}", v[1], color="#e74c3c")
-        with c_e2:
-            st.write("##### Corners Totales")
-            for k, v in res['CORNERS'].items(): dual_bar(f"Over {k}", v[0], f"Under {k}", v[1], color="#2ecc71")
+        st.write("##### Mercado de Tarjetas (Over vs Under)")
+        tj_a, tj_b = st.columns(2)
+        for i, (line, p) in enumerate(res['TARJETAS'].items()):
+            with (tj_a if i < 3 else tj_b):
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color_over="#e74c3c", color_under="#444")
 
     with t4:
+        st.write("##### Mercado de Corners (Over vs Under)")
+        co_a, co_b = st.columns(2)
+        for i, (line, p) in enumerate(res['CORNERS'].items()):
+            with (co_a if i < 3 else co_b):
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color_over="#2ecc71", color_under="#444")
+
+    with t5:
         df_m = pd.DataFrame(res['MATRIZ'])
         fig = px.imshow(df_m, color_continuous_scale='Viridis', text_auto=".1f", labels=dict(x=f"Goles {nv}", y=f"Goles {nl}"))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v3.0 | BI System</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v3.1 | Sistema de Análisis Bidimensional</p>", unsafe_allow_html=True)

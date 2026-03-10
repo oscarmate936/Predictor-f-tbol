@@ -261,3 +261,4 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
 st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Barra 1X2 Reubicada</p>", unsafe_allow_html=True)
+

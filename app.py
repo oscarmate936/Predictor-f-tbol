@@ -22,10 +22,10 @@ def api_request(action, params={}):
         return []
 
 # =================================================================
-# COMPONENTES VISUALES (ESTILO ELITE CAPTURA)
+# COMPONENTES VISUALES (ESTILO ELITE)
 # =================================================================
 def triple_bar(p1, px, p2, n1, nx, n2):
-    """Barra segmentada única para 1X2 (Estilo Captura)"""
+    """Barra segmentada única para 1X2"""
     st.markdown(f"""
         <div style="margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
             <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
@@ -42,7 +42,7 @@ def triple_bar(p1, px, p2, n1, nx, n2):
     """, unsafe_allow_html=True)
 
 def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
-    """Barra comparativa Over/Under bidimensional"""
+    """Barra comparativa para Doble Oportunidad, Goles, Tarjetas y Corners"""
     st.markdown(f"""
         <div style="margin-bottom: 15px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
@@ -51,13 +51,13 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
             </div>
             <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
                 <div style="width: {prob_over}%; background: {color};"></div>
-                <div style="width: {prob_under}%; background: rgba(255,255,255,0.1);"></div>
+                <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
 # =================================================================
-# MOTOR MATEMÁTICO (PRO STATS ENGINE - TU LÓGICA ORIGINAL)
+# MOTOR MATEMÁTICO (PRO STATS ENGINE)
 # =================================================================
 class MotorMatematico:
     def __init__(self): self.rho = -0.15
@@ -101,9 +101,9 @@ class MotorMatematico:
                 "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], "MATRIZ": matriz}
 
 # =================================================================
-# INTERFAZ Y DASHBOARD
+# INTERFAZ Y SIDEBAR
 # =================================================================
-st.set_page_config(page_title="OR936 Elite Analysis", layout="wide")
+st.set_page_config(page_title="OR936 Elite v3.2", layout="wide")
 
 st.markdown("""
     <style>
@@ -116,14 +116,14 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("⚙️ PANEL API")
+    st.title("⚙️ PANEL CONTROL API")
     ligas_api = {
         "La Liga": 302, "Premier League": 152, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, 
         "UEFA Champions": 3, "Copa Libertadores": 13, "Brasileirão Serie A": 99, 
         "Liga Mayor SLV": 601, "Copa Presidente SLV": 603, "FA Cup": 145
     }
     nombre_liga = st.selectbox("Selecciona Liga", list(ligas_api.keys()))
-    fecha_analisis = st.date_input("Fecha de Partidos", datetime.now())
+    fecha_analisis = st.date_input("Fecha", datetime.now())
     
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
     if eventos and isinstance(eventos, list):
@@ -132,7 +132,11 @@ with st.sidebar:
         if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings:
-                st.session_state['p_liga_auto'] = sum(int(t['overall_league_GF']) for t in standings) / (sum(int(t['overall_league_payed']) for t in standings)/2)
+                # --- ACTUALIZACIÓN AUTOMÁTICA PROMEDIO GOLES LIGA ---
+                total_g = sum(int(t['overall_league_GF']) for t in standings)
+                total_pj = sum(int(t['overall_league_payed']) for t in standings)
+                st.session_state['p_liga_auto'] = total_g / (total_pj / 2) if total_pj > 0 else 2.5
+                
                 def buscar(n):
                     for t in standings: 
                         if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
@@ -143,27 +147,28 @@ with st.sidebar:
                     st.session_state['vgf_auto'], st.session_state['vgc_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed']), float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.1</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
 # ENTRADA DE DATOS
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Equipo L", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
+    nl = st.text_input("Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
     c1, c2 = st.columns(2)
-    lgf = c1.number_input("Goles Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
-    lgc = c2.number_input("Goles Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
+    lgf = c1.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7))
+    lgc = c2.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2))
     ltj, lco = c1.number_input("Tarjetas L", 0.0, 15.0, 2.3), c2.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Equipo V", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
+    nv = st.text_input("Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
     c3, c4 = st.columns(2)
-    vgf = c3.number_input("Goles Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
-    vgc = c4.number_input("Goles Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
+    vgf = c3.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5))
+    vgc = c4.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1))
     vtj, vco = c3.number_input("Tarjetas V", 0.0, 15.0, 2.2), c4.number_input("Corners V", 0.0, 20.0, 4.8)
 
-p_liga = st.slider("Media Goles Liga", 0.5, 5.0, st.session_state.get('p_liga_auto', 2.5))
+# Promedio dinámico
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, st.session_state.get('p_liga_auto', 2.5))
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
@@ -172,16 +177,25 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
     # 1X2 BARRA ÚNICA
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "X", nv)
     
+    # --- SUGERENCIAS EXPANDIDAS (6 OPCIONES) ---
+    pool = []
+    pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
+    pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
+    pool.append({"t": "Doble Oportunidad 12", "p": res['DC'][2]})
+    pool.append({"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
+    pool.append({"t": "Ambos Anotan: NO", "p": res['BTTS'][1]})
+    for line, p in res['GOLES'].items():
+        if 1.5 <= line <= 3.5:
+            pool.append({"t": f"Over {line} Goles", "p": p[0]})
+            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+    sug = sorted([s for s in pool if 65 < s['p'] < 96], key=lambda x: x['p'], reverse=True)[:6]
+
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
-        st.markdown("#### 💎 Top Sugerencias")
-        pool = [{"t": "Doble Op. 1X", "p": res['DC'][0]}, {"t": "Doble Op. X2", "p": res['DC'][1]}, {"t": "Ambos Anotan", "p": res['BTTS'][0]}]
-        for line, p in res['GOLES'].items():
-            if 1.5 <= line <= 3.5: pool.append({"t": f"Over {line} Goles", "p": p[0]})
-        sug = sorted([s for s in pool if 65 < s['p'] < 95], key=lambda x: x['p'], reverse=True)[:4]
+        st.markdown("#### 💎 Top 6 Sugerencias Maestras")
         for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("#### ⚽ Marcadores")
@@ -189,23 +203,36 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🥅 Goles", "🎴 Tarjetas", "🚩 Corners", "📊 Matriz"])
-    with tab1:
-        c_g1, c_g2 = st.columns(2)
-        with c_g1:
+    # --- PESTAÑAS ---
+    tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
+    
+    with tab_dc:
+        st.write("##### Mercados de Doble Oportunidad")
+        dual_bar_explicit(f"1X (Local o Empate)", res['DC'][0], "2 (Visitante Directo)", 100-res['DC'][0], color="#9b59b6")
+        dual_bar_explicit(f"X2 (Visitante o Empate)", res['DC'][1], "1 (Local Directo)", 100-res['DC'][1], color="#f39c12")
+        dual_bar_explicit(f"12 (Local o Visitante)", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
+
+    with tab_g:
+        ga, gb = st.columns(2)
+        with ga:
+            st.write("##### Over/Under Goles")
             for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
-                dual_bar_explicit(f"Over {line}", res['GOLES'][line][0], f"Under {line}", res['GOLES'][line][1])
-        with c_g2:
-            dual_bar_explicit("Ambos Anotan: SÍ", res['BTTS'][0], "Ambos Anotan: NO", res['BTTS'][1], color="#f1c40f")
-    with tab2:
-        tj1, tj2 = st.columns(2)
-        for i, (line, p) in enumerate(res['TARJETAS'].items()):
-            with (tj1 if i < 3 else tj2): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
-    with tab3:
-        co1, co2 = st.columns(2)
-        for i, (line, p) in enumerate(res['CORNERS'].items()):
-            with (co1 if i < 3 else co2): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
-    with tab4:
+                p = res['GOLES'][line]
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
+        with gb:
+            st.write("##### Ambos Anotan")
+            dual_bar_explicit("BTTS SÍ", res['BTTS'][0], "BTTS NO", res['BTTS'][1], color="#f1c40f")
+
+    with tab_spec:
+        tj, co = st.columns(2)
+        with tj:
+            st.write("🎴 **Tarjetas**")
+            for line, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
+        with co:
+            st.write("🚩 **Corners**")
+            for line, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
+
+    with tab_m:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.1 | Sistema de Análisis Bidimensional</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Motor Auto-Sincronizado</p>", unsafe_allow_html=True)

@@ -59,19 +59,6 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
         </div>
     """, unsafe_allow_html=True)
 
-def single_prog_bar(label, prob, color="#00ffcc"):
-    st.markdown(f"""
-        <div style="margin-bottom: 10px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #ddd; margin-bottom: 2px;">
-                <span>{label}</span>
-                <span>{prob:.1f}%</span>
-            </div>
-            <div style="background: #222; height: 8px; border-radius: 4px; overflow: hidden;">
-                <div style="width: {prob}%; background: {color}; height: 100%;"></div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
 # =================================================================
 # MOTOR MATEMÁTICO (PRO STATS ENGINE)
 # =================================================================
@@ -246,12 +233,8 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
         tj_sec, co_sec = st.columns(2)
         with tj_sec:
             st.markdown("##### 🎴 Mercado de Tarjetas")
-            t_col1, t_col2 = st.columns(2)
             for line, p in res['TARJETAS'].items():
-                with t_col1:
-                    single_prog_bar(f"Over {line}", p[0], color="#e74c3c")
-                with t_col2:
-                    single_prog_bar(f"Under {line}", p[1], color="#ff8c00")
+                dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
         with co_sec:
             st.markdown("##### 🚩 Mercado de Corners")
             for line, p in res['CORNERS'].items(): 
@@ -260,5 +243,4 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     with tab_m:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale='Viridis', text_auto=".1f"), use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Barra 1X2 Reubicada</p>", unsafe_allow_html=True)
-
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em; margin-top: 30px;'>OR936 Elite v3.2 | Consistencia Visual OK</p>", unsafe_allow_html=True)

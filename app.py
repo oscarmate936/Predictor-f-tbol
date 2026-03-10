@@ -111,7 +111,6 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
             
         total = max(0.0001, p1 + px + p2)
-        # CORRECCIÓN: Se retornan 3 valores en DC (1X, X2, 12)
         return {
             "1X2": (p1/total*100, px/total*100, p2/total*100), 
             "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
@@ -202,12 +201,10 @@ p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_sta
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
-    # Lógica de xG basada en fuerza de ataque y defensa relativa a la liga
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # SUGERENCIAS Y MARCADORES (MASTER CARD)
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
@@ -220,7 +217,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
             
-    # Filtrar sugerencias con probabilidad sólida
     sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
@@ -237,10 +233,8 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- APARTADO 1X2 ---
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
 
-    # --- PESTAÑAS ---
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
     
     with tab_dc:
@@ -251,7 +245,8 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            for line in [0.5, 1.5, 2.5, 3.5, 4.5]:
+            # Línea agregada aquí: 5.5
+            for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
         with gb:

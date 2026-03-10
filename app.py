@@ -10,6 +10,7 @@ import difflib
 # =================================================================
 # CONFIGURACIÓN API (apiv3.apifootball.com)
 # =================================================================
+# Nota: Asegúrate de que tu API Key esté activa y con créditos.
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
@@ -28,16 +29,21 @@ for key, value in keys_to_init.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=600) # Reducido el cache para detectar cambios más rápido
 def api_request(action, params={}):
     params.update({"action": action, "APIkey": API_KEY})
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
-        return res.json() if res.status_code == 200 else []
-    except: return []
+        data = res.json()
+        # Si la API devuelve un error (diccionario con llave 'error'), lo manejamos
+        if isinstance(data, dict) and 'error' in data:
+            return []
+        return data
+    except: 
+        return []
 
 def get_best_match(name, choices):
-    matches = difflib.get_close_matches(name, choices, n=1, cutoff=0.4)
+    matches = difflib.get_close_matches(name, choices, n=1, cutoff=0.3) # Umbral más flexible
     return matches[0] if matches else None
 
 # =================================================================
@@ -124,7 +130,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # =================================================================
 # INTERFAZ PRINCIPAL
 # =================================================================
-st.set_page_config(page_title="OR936 Elite v3.4 Pro", layout="wide")
+st.set_page_config(page_title="OR936 Elite v3.4.1", layout="wide")
 
 st.markdown("""
     <style>
@@ -150,7 +156,7 @@ with st.sidebar:
         
         if st.button("⚡ SINCRONIZAR DATOS", use_container_width=True):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
-            if standings:
+            if isinstance(standings, list) and len(standings) > 0:
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
                 nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
@@ -163,19 +169,28 @@ with st.sidebar:
                 nombres_api = [t['team_name'] for t in standings]
                 match_l = get_best_match(op_p[p_sel]['match_hometeam_name'], nombres_api)
                 match_v = get_best_match(op_p[p_sel]['match_awayteam_name'], nombres_api)
+                
                 dl = next((t for t in standings if t['team_name'] == match_l), None)
                 dv = next((t for t in standings if t['team_name'] == match_v), None)
+                
                 if dl and dv:
-                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/int(dl['overall_league_payed'])
-                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/int(dl['overall_league_payed'])
-                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed'])
-                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
+                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/max(1, int(dl['overall_league_payed']))
+                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/max(1, int(dl['overall_league_payed']))
+                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/max(1, int(dv['overall_league_payed']))
+                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/max(1, int(dv['overall_league_payed']))
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                    st.session_state['last_sync'] = p_sel
+                    st.success("✅ Sincronización Exitosa")
                     st.rerun()
+                else:
+                    st.warning("⚠️ No se encontraron datos para estos equipos en la tabla.")
+            else:
+                st.error("❌ Error de API: No se pudo obtener la tabla de posiciones.")
+    else:
+        st.info("📅 No hay partidos programados para esta fecha en la liga seleccionada.")
 
-st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.4</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.4.1</h1>", unsafe_allow_html=True)
 
+# PARÁMETROS DE ENTRADA
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
@@ -204,7 +219,7 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     xg_l, xg_v = (lgf/p_liga)*(vgc/p_liga)*p_liga, (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    # Pool de Sugerencias (Total 10)
+    # Pool de Sugerencias (Reducido a 5 finalistas)
     pool = [
         {"t": "1X (Local o Empate)", "p": res['DC'][0]},
         {"t": "X2 (Visita o Empate)", "p": res['DC'][1]},
@@ -216,18 +231,18 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
         pool.append({"t": f"Over {l} Goles", "p": res['GOLES'][l][0]})
         pool.append({"t": f"Under {l} Goles", "p": res['GOLES'][l][1]})
     
-    sug = sorted([s for s in pool if 60 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:10]
+    sug = sorted([s for s in pool if 60 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:5]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
-        st.markdown(f"#### 💎 Top 10 Sugerencias ({estilo_liga})")
+        st.markdown(f"#### 💎 Top 5 Sugerencias ({estilo_liga})")
         for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("#### ⚽ Marcadores")
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
     
-    msg = urllib.parse.quote(f"📊 *ANÁLISIS {nl} vs {nv}*\n🏆 Estilo: {estilo_liga}\n\n💎 *Top Sugerencias:*\n" + "\n".join([f"• {s['t']}: {s['p']:.1f}%" for s in sug]))
+    msg = urllib.parse.quote(f"📊 *ANÁLISIS {nl} vs {nv}*\n🏆 Estilo: {estilo_liga}\n\n💎 *Top 5 Sugerencias:*\n" + "\n".join([f"• {s['t']}: {s['p']:.1f}%" for s in sug]))
     st.link_button("📲 COMPARTIR EN WHATSAPP", f"https://wa.me/?text={msg}", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -254,4 +269,4 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     with t4:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ'], columns=[f"{nv} {i}" for i in range(6)], index=[f"{nl} {i}" for i in range(6)]), text_auto=".1f", color_continuous_scale='Viridis'), use_container_width=True)
 
-st.markdown(f"<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.4 | GPM Liga: {st.session_state['p_liga_auto']:.2f}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.4.1 | GPM Liga: {st.session_state['p_liga_auto']:.2f}</p>", unsafe_allow_html=True)

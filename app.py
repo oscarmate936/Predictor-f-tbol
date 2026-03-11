@@ -6,7 +6,7 @@ import requests
 from datetime import datetime
 
 # =================================================================
-# CONFIGURACIÓN API (Inalterada)
+# CONFIGURACIÓN API (Optimizado para precisión Local/Visitante)
 # =================================================================
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
@@ -97,7 +97,6 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stApp { background: radial-gradient(circle at top right, #1a1f25, #0a0c10); }
     
-    /* Contenedores Principales */
     .master-card { 
         background: rgba(22, 27, 34, 0.7); 
         padding: 30px; 
@@ -108,7 +107,6 @@ st.markdown("""
         backdrop-filter: blur(10px);
     }
 
-    /* Veredictos */
     .verdict-item { 
         background: linear-gradient(90deg, rgba(0, 255, 163, 0.1) 0%, rgba(0,0,0,0) 100%);
         border-left: 3px solid #00ffa3; 
@@ -119,7 +117,6 @@ st.markdown("""
         font-size: 0.95em;
     }
     
-    /* Marcadores */
     .score-badge { 
         background: #000; 
         padding: 12px; 
@@ -133,7 +130,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Botón Pro */
     .stButton>button { 
         background: linear-gradient(135deg, #d4af37 0%, #aa8a2e 100%); 
         color: #000 !important; 
@@ -151,10 +147,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* Inputs */
     .stNumberInput, .stTextInput { border-radius: 8px; }
-    
-    /* Sidebar */
     [data-testid="stSidebar"] { background-color: #0a0c10; border-right: 1px solid #222; }
     </style>
     """, unsafe_allow_html=True)
@@ -190,7 +183,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# INTERFAZ Y SIDEBAR
+# INTERFAZ Y SIDEBAR (Actualizado con Filtro Local/Visitante)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -213,7 +206,7 @@ with st.sidebar:
             if standings and isinstance(standings, list):
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                
+
                 llaves = ['p_liga_auto', 'lgf_auto', 'lgc_auto', 'vgf_auto', 'vgc_auto', 'nl_auto', 'nv_auto']
                 for k in llaves:
                     if k in st.session_state: del st.session_state[k]
@@ -226,11 +219,17 @@ with st.sidebar:
                     return None
 
                 dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
+                
                 if dl and dv:
-                    st.session_state['lgf_auto'] = float(dl['overall_league_GF'])/int(dl['overall_league_payed'])
-                    st.session_state['lgc_auto'] = float(dl['overall_league_GA'])/int(dl['overall_league_payed'])
-                    st.session_state['vgf_auto'] = float(dv['overall_league_GF'])/int(dv['overall_league_payed'])
-                    st.session_state['vgc_auto'] = float(dv['overall_league_GA'])/int(dv['overall_league_payed'])
+                    # CAMBIO REALIZADO: Uso de Home stats para local y Away stats para visitante
+                    pj_home = int(dl['home_league_payed'])
+                    pj_away = int(dv['away_league_payed'])
+                    
+                    st.session_state['lgf_auto'] = float(dl['home_league_GF']) / pj_home if pj_home > 0 else 0.0
+                    st.session_state['lgc_auto'] = float(dl['home_league_GA']) / pj_home if pj_home > 0 else 0.0
+                    st.session_state['vgf_auto'] = float(dv['away_league_GF']) / pj_away if pj_away > 0 else 0.0
+                    st.session_state['vgc_auto'] = float(dv['away_league_GA']) / pj_away if pj_away > 0 else 0.0
+                    
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
 
@@ -264,7 +263,6 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
-    # SUGERENCIAS
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})

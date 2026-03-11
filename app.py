@@ -329,12 +329,3 @@ if run_analysis:
 
     with t4:
         st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ']), text_auto=".1f", color_continuous_scale='Viridis'), use_container_width=True)
-
-
-
-### ¿Qué logramos con este cambio?
-- **Claridad Absoluta:** El usuario ve primero quién juega (Header) y luego tiene una zona de trabajo clara (Dashboard) para meter los datos.
-- **Look "Pro":** El uso de `JetBrains Mono` para subtítulos y la organización en 3 columnas para los datos manuales eliminan la sensación de desorden.
-- **Interactividad:** El botón de ejecución ahora tiene un degradado neón que destaca la acción principal.
-
-¿Te gustaría que añadiera una función para **exportar estos resultados a un reporte PDF** o imagen para compartir?

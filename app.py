@@ -98,7 +98,6 @@ inject_custom_css()
 # COMPONENTES VISUALES PERSONALIZADOS
 # =================================================================
 def render_dual_bar(label, p_l, p_v, color_l="#00ffcc", color_v="#3498db"):
-    # Normalización si es necesario
     total = p_l + p_v if (p_l + p_v) > 0 else 1
     w_l = (p_l / total) * 100
     st.markdown(f"""
@@ -133,7 +132,7 @@ def render_triple_bar(p1, px, p2, n1, nv):
     """, unsafe_allow_html=True)
 
 # =================================================================
-# MOTOR MATEMÁTICO (NO TOCAR LÓGICA)
+# MOTOR MATEMÁTICO (LÓGICA INTACTA)
 # =================================================================
 class MotorMatematico:
     def __init__(self): self.rho = -0.15
@@ -202,16 +201,16 @@ def api_request(action, params=None):
 # SIDEBAR (CONTROL)
 # =================================================================
 with st.sidebar:
-    st.markdown("<h2 style='color:#00ffcc;'>Settings</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#00ffcc;'>Configuración</h2>", unsafe_allow_html=True)
     ligas_api = {"La Liga": 302, "Premier League": 152, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, "Champions": 3}
-    nombre_liga = st.selectbox("League", list(ligas_api.keys()))
-    fecha_analisis = st.date_input("Match Date", datetime.now())
+    nombre_liga = st.selectbox("Liga", list(ligas_api.keys()))
+    fecha_analisis = st.date_input("Fecha del Partido", datetime.now())
     
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("Select Match", list(op_p.keys()))
-        if st.button("⚡ SYNC DATA"):
+        p_sel = st.selectbox("Seleccionar Partido", list(op_p.keys()))
+        if st.button("⚡ SINCRONIZAR DATOS"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings:
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
@@ -231,7 +230,7 @@ with st.sidebar:
                     st.rerun()
 
 # =================================================================
-# MAIN INTERFACE
+# INTERFAZ PRINCIPAL
 # =================================================================
 nl = st.session_state.get('nl_auto', "Local")
 nv = st.session_state.get('nv_auto', "Visitante")
@@ -240,31 +239,48 @@ st.markdown(f"""
     <div class="match-header">
         <span style="color:#8b949e; font-size:0.8rem; font-weight:700; text-transform:uppercase;">{nombre_liga}</span>
         <div style="display:flex; justify-content:center; align-items:center; gap:40px; margin-top:15px;">
-            <div style="text-align:right; width:150px;">
-                <h2 style="margin:0; font-weight:800;">{nl}</h2>
+            <div style="text-align:right; min-width:200px;">
+                <h2 style="margin:0; font-weight:800; color:#00ffcc;">{nl}</h2>
+                <span style="color:#8b949e; font-size:0.8rem;">EQUIPO LOCAL</span>
             </div>
-            <div style="background:#1c2127; padding:10px 20px; border-radius:15px; border:1px solid #30363d;">
-                <h1 style="margin:0; letter-spacing:5px; color:#00ffcc;">VS</h1>
+            <div style="background:#1c2127; padding:10px 25px; border-radius:15px; border:1px solid #30363d;">
+                <h1 style="margin:0; letter-spacing:5px; color:#ffffff; font-size:1.5rem;">VS</h1>
             </div>
-            <div style="text-align:left; width:150px;">
-                <h2 style="margin:0; font-weight:800;">{nv}</h2>
+            <div style="text-align:left; min-width:200px;">
+                <h2 style="margin:0; font-weight:800; color:#3498db;">{nv}</h2>
+                <span style="color:#8b949e; font-size:0.8rem;">EQUIPO VISITANTE</span>
             </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Inputs de Ajuste Fino
-with st.expander("🛠️ Manual Data Adjustment"):
-    c1, c2, c3 = st.columns(3)
-    lgf = c1.number_input("Home GF Avg", 0.0, 5.0, st.session_state.get('lgf_auto', 1.5))
-    lgc = c1.number_input("Home GA Avg", 0.0, 5.0, st.session_state.get('lgc_auto', 1.2))
-    vgf = c2.number_input("Away GF Avg", 0.0, 5.0, st.session_state.get('vgf_auto', 1.3))
-    vgc = c2.number_input("Away GA Avg", 0.0, 5.0, st.session_state.get('vgc_auto', 1.4))
-    ltj = c3.number_input("Total Cards Line", 0.0, 10.0, 4.5)
-    lco = c3.number_input("Total Corners Line", 0.0, 15.0, 9.5)
-    p_liga = st.slider("League Goal Average", 0.5, 4.0, st.session_state['p_liga_auto'])
+# SECCIÓN DE ENTRADA DE DATOS (TARJETAS SEPARADAS)
+st.markdown('<span class="section-title" style="text-align:center; display:block;">Ajuste de Parámetros de Análisis</span>', unsafe_allow_html=True)
+col_input_l, col_input_v, col_input_g = st.columns(3)
 
-if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
+with col_input_l:
+    st.markdown(f'''<div class="premium-card" style="border-top: 3px solid #00ffcc;">
+        <span class="section-title" style="color:#00ffcc;">🏠 {nl} (Local)</span>''', unsafe_allow_html=True)
+    lgf = st.number_input("Goles Marcados (Prom)", 0.0, 5.0, st.session_state.get('lgf_auto', 1.5), key="l1")
+    lgc = st.number_input("Goles Recibidos (Prom)", 0.0, 5.0, st.session_state.get('lgc_auto', 1.2), key="l2")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_input_v:
+    st.markdown(f'''<div class="premium-card" style="border-top: 3px solid #3498db;">
+        <span class="section-title" style="color:#3498db;">🚀 {nv} (Visitante)</span>''', unsafe_allow_html=True)
+    vgf = st.number_input("Goles Marcados (Prom)", 0.0, 5.0, st.session_state.get('vgf_auto', 1.3), key="v1")
+    vgc = st.number_input("Goles Recibidos (Prom)", 0.0, 5.0, st.session_state.get('vgc_auto', 1.4), key="v2")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_input_g:
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    st.markdown('<span class="section-title">📊 Mercado y Liga</span>', unsafe_allow_html=True)
+    ltj = st.number_input("Línea de Tarjetas", 0.0, 10.0, 4.5)
+    lco = st.number_input("Línea de Corners", 0.0, 15.0, 9.5)
+    p_liga = st.slider("Media de Goles de la Liga", 0.5, 4.0, st.session_state['p_liga_auto'])
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if st.button("🔥 EJECUTAR ANÁLISIS IA ELITE", use_container_width=True):
     motor = MotorMatematico()
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
@@ -275,17 +291,16 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
     
     with col_main:
         st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-        st.markdown('<span class="section-title">💎 Master Insights</span>', unsafe_allow_html=True)
+        st.markdown('<span class="section-title">💎 Recomendaciones Maestas</span>', unsafe_allow_html=True)
         
-        # Lógica de sugerencias mejorada
         pool = []
         pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
         pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
         pool.append({"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]})
         for line, p in res['GOLES'].items():
             if 1.5 <= line <= 3.5:
-                pool.append({"t": f"Over {line} Goals", "p": p[0]})
-                pool.append({"t": f"Under {line} Goals", "p": p[1]})
+                pool.append({"t": f"Más de {line} Goles", "p": p[0]})
+                pool.append({"t": f"Menos de {line} Goles", "p": p[1]})
         
         sugerencias = sorted([s for s in pool if 68 < s['p'] < 96], key=lambda x: x['p'], reverse=True)[:5]
         for s in sugerencias:
@@ -301,7 +316,7 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
 
     with col_side:
         st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-        st.markdown('<span class="section-title">🎯 Correct Score</span>', unsafe_allow_html=True)
+        st.markdown('<span class="section-title">🎯 Marcador Exacto</span>', unsafe_allow_html=True)
         for score, prob in res['TOP']:
             st.markdown(f"""
                 <div style="display:flex; justify-content:space-between; padding:15px; background:#1c2127; border-radius:12px; margin-bottom:10px; border: 1px solid #30363d;">
@@ -312,7 +327,7 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- PESTAÑAS DETALLADAS ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Main Markets", "⚽ Goals (Full Range)", "🚩 Corners & Cards", "📈 Matrix"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Mercados Principales", "⚽ Goles (Rango Completo)", "🚩 Córners y Tarjetas", "📈 Matriz de Probabilidad"])
     
     with tab1:
         st.markdown('<div class="premium-card">', unsafe_allow_html=True)
@@ -324,7 +339,6 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
 
     with tab2:
         st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-        # Bucle de Over/Under 0.5 a 5.5 solicitado
         for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
             p = res['GOLES'][line]
             render_dual_bar(f"Over/Under {line} Goles", p[0], p[1])
@@ -334,15 +348,15 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
         c_a, c_b = st.columns(2)
         with c_a:
             st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-            st.markdown('<span class="section-title">Corners Probabilities</span>', unsafe_allow_html=True)
+            st.markdown('<span class="section-title">Probabilidades de Córners</span>', unsafe_allow_html=True)
             for line, p in res['CORNERS'].items():
-                render_dual_bar(f"Over {line}", p[0], p[1], color_l="#2ecc71")
+                render_dual_bar(f"Más de {line}", p[0], p[1], color_l="#2ecc71")
             st.markdown('</div>', unsafe_allow_html=True)
         with c_b:
             st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-            st.markdown('<span class="section-title">Cards Probabilities</span>', unsafe_allow_html=True)
+            st.markdown('<span class="section-title">Probabilidades de Tarjetas</span>', unsafe_allow_html=True)
             for line, p in res['TARJETAS'].items():
-                render_dual_bar(f"Over {line}", p[0], p[1], color_l="#e74c3c")
+                render_dual_bar(f"Más de {line}", p[0], p[1], color_l="#e74c3c")
             st.markdown('</div>', unsafe_allow_html=True)
 
     with tab4:
@@ -353,4 +367,4 @@ if st.button("🔥 RUN ELITE AI ANALYSIS", use_container_width=True):
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<p style='text-align:center; color:#555; font-size:0.7rem; margin-top:50px;'>OR936 Elite Engine v3.2 | Designed for High Performance Analysis</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#555; font-size:0.7rem; margin-top:50px;'>Motor OR936 Elite v3.2 | Diseñado para Análisis de Alto Rendimiento</p>", unsafe_allow_html=True)

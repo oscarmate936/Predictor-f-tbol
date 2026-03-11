@@ -30,19 +30,19 @@ def api_request(action, params=None):
         return []
 
 # =================================================================
-# COMPONENTES VISUALES
+# COMPONENTES VISUALES CON NUEVA PALETA
 # =================================================================
 def triple_bar(p1, px_val, p2, n1, nx, n2):
     st.markdown(f"""
-        <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
-            <p style='color:#00ffcc; font-size:0.9em; font-weight:bold; margin-bottom:10px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
-            <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
-                <span>{n1}: <b>{p1:.1f}%</b></span>
-                <span>{nx}: <b>{px_val:.1f}%</b></span>
-                <span>{n2}: <b>{p2:.1f}%</b></span>
+        <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 20px; border-radius: 20px; border: 1px solid #30363d; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+            <p style='color:#8b949e; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:15px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight:600; margin-bottom: 10px; color: #e1e1e1;">
+                <span style="color:#00ffcc;">{n1}: {p1:.1f}%</span>
+                <span style="color:#8b949e;">{nx}: {px_val:.1f}%</span>
+                <span style="color:#3498db;">{n2}: {p2:.1f}%</span>
             </div>
-            <div style="display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #333;">
-                <div style="width: {p1}%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc55;"></div>
+            <div style="display: flex; height: 12px; border-radius: 10px; overflow: hidden; background: #30363d;">
+                <div style="width: {p1}%; background: #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,0.3);"></div>
                 <div style="width: {px_val}%; background: #444;"></div>
                 <div style="width: {p2}%; background: #3498db;"></div>
             </div>
@@ -51,20 +51,20 @@ def triple_bar(p1, px_val, p2, n1, nx, n2):
 
 def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
     st.markdown(f"""
-        <div style="margin-bottom: 15px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
-                <span><b>{label_over}:</b> {prob_over:.1f}%</span>
-                <span><b>{label_under}:</b> {prob_under:.1f}%</span>
+        <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight:600; color: #e1e1e1; margin-bottom: 6px;">
+                <span>{label_over}: {prob_over:.1f}%</span>
+                <span>{label_under}: {prob_under:.1f}%</span>
             </div>
-            <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
-                <div style="width: {prob_over}%; background: {color};"></div>
+            <div style="display: flex; background: #30363d; height: 8px; border-radius: 10px; overflow: hidden;">
+                <div style="width: {prob_over}%; background: {color}; box-shadow: 0 0 8px {color}44;"></div>
                 <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
 # =================================================================
-# MOTOR MATEMÁTICO (PRO STATS ENGINE)
+# MOTOR MATEMÁTICO (PRO STATS ENGINE) - SIN CAMBIOS
 # =================================================================
 class MotorMatematico:
     def __init__(self): 
@@ -123,22 +123,80 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ Y SIDEBAR
+# INTERFAZ Y SIDEBAR CON ESTILO PREMIUM
 # =================================================================
 st.set_page_config(page_title="OR936 Elite v3.2", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background-color: #0e1117; }
-    .master-card { background: #161b22; padding: 25px; border-radius: 15px; border: 1px solid #30363d; margin-bottom: 20px; }
-    .verdict-item { border-left: 4px solid #00ffcc; background: rgba(255,255,255,0.03); padding: 10px; margin-bottom: 8px; border-radius: 0 8px 8px 0; }
-    .score-badge { background: #1c2128; padding: 8px; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 5px; text-align: center; }
-    .stButton>button { background: linear-gradient(90deg, #00ffcc 0%, #008577 100%); color: black !important; font-weight: bold; border: none; padding: 12px; border-radius: 10px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+    
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #e1e1e1; }
+    .stApp { background-color: #0b0e11; }
+    
+    .master-card { 
+        background: #161b22; 
+        padding: 25px; 
+        border-radius: 20px; 
+        border: 1px solid #30363d; 
+        margin-bottom: 20px; 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    
+    .verdict-item { 
+        background: rgba(0, 255, 204, 0.05);
+        border-left: 3px solid #00ffcc;
+        padding: 12px;
+        margin-bottom: 10px;
+        border-radius: 0 10px 10px 0;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+    }
+    
+    .score-badge { 
+        background: #1c2128; 
+        padding: 15px; 
+        border-radius: 12px; 
+        border: 1px solid #30363d; 
+        margin-bottom: 10px; 
+        text-align: center;
+        transition: transform 0.3s;
+    }
+    
+    .score-badge:hover { transform: scale(1.02); border-color: #00ffcc; }
+
+    /* Botón estilo análisis */
+    .stButton>button { 
+        background: linear-gradient(90deg, #00ffcc 0%, #008577 100%); 
+        color: #000 !important; 
+        font-weight: 800; 
+        border: none; 
+        padding: 15px; 
+        border-radius: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,255,204,0.4); }
+
+    /* Tabs Personalizados */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; background-color: transparent; }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 8px 16px;
+        color: #8b949e;
+    }
+    .stTabs [aria-selected="true"] { background-color: #00ffcc !important; color: #000 !important; font-weight: bold; }
+    
+    h1, h2, h3 { font-weight: 800 !important; letter-spacing: -1px; }
     </style>
     """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("⚙️ PANEL CONTROL API")
+    st.markdown("<h2 style='color:#00ffcc;'>⚙️ PANEL API</h2>", unsafe_allow_html=True)
     ligas_api = {
         "La Liga": 302, "Premier League": 152, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, 
         "UEFA Champions": 3, "Copa Libertadores": 13, "Brasileirão Serie A": 99, 
@@ -176,13 +234,13 @@ with st.sidebar:
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
     else:
-        st.warning("No se detectaron eventos para esta fecha/liga.")
+        st.warning("No se detectaron eventos.")
 
-st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #00ffcc; margin-bottom:30px;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
-    st.markdown("### 🏠 Local")
+    st.markdown("<h3 style='color:#00ffcc;'>🏠 Local</h3>", unsafe_allow_html=True)
     nl = st.text_input("Nombre Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
     la, lb = st.columns(2)
     lgf = la.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7), step=0.1)
@@ -190,13 +248,14 @@ with col_l:
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3, step=0.1), lb.number_input("Corners L", 0.0, 20.0, 5.5, step=0.1)
 
 with col_v:
-    st.markdown("### 🚀 Visitante")
+    st.markdown("<h3 style='color:#3498db;'>🚀 Visitante</h3>", unsafe_allow_html=True)
     nv = st.text_input("Nombre Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
     va, vb = st.columns(2)
     vgf = va.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5), step=0.1)
     vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1), step=0.1)
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2, step=0.1), vb.number_input("Corners V", 0.0, 20.0, 4.8, step=0.1)
 
+st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'])
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
@@ -222,15 +281,15 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.2, 1])
     with v1:
-        st.markdown("#### 💎 Top 6 Sugerencias Maestras")
+        st.markdown("<h4 style='color:#8b949e; text-transform:uppercase; font-size:0.8rem;'>💎 Top 6 Sugerencias Maestras</h4>", unsafe_allow_html=True)
         if sug:
-            for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
+            for s in sug: st.markdown(f'<div class="verdict-item"><span>{s["t"]}</span> <span style="color:#00ffcc;">{s["p"]:.1f}%</span></div>', unsafe_allow_html=True)
         else:
-            st.info("No se encontraron mercados con alta probabilidad definida.")
+            st.info("No se encontraron mercados con alta probabilidad.")
     with v2:
-        st.markdown("#### ⚽ Marcadores Probables")
+        st.markdown("<h4 style='color:#8b949e; text-transform:uppercase; font-size:0.8rem;'>⚽ Marcadores Probables</h4>", unsafe_allow_html=True)
         for i, (score, prob) in enumerate(res['TOP']):
-            st.markdown(f'<div class="score-badge"><b>{score}</b> — {prob:.1f}%</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="score-badge"><b style="font-size:1.2rem; color:#00ffcc;">{score}</b><br><span style="color:#8b949e; font-size:0.8rem;">Probabilidad: {prob:.1f}%</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
@@ -238,14 +297,15 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     tab_dc, tab_g, tab_spec, tab_m = st.tabs(["🏆 Doble Oportunidad", "🥅 Goles / BTTS", "🚩 Especiales", "📊 Matriz"])
 
     with tab_dc:
-        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 ({nv} Directo)", 100-res['DC'][0], color="#9b59b6")
-        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 ({nl} Directo)", 100-res['DC'][1], color="#f39c12")
+        st.markdown("<br>", unsafe_allow_html=True)
+        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 ({nv} Directo)", 100-res['DC'][0], color="#00ffcc")
+        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 ({nl} Directo)", 100-res['DC'][1], color="#3498db")
         dual_bar_explicit(f"12 ({nl} o {nv})", res['DC'][2], "X (Empate Directo)", 100-res['DC'][2], color="#e74c3c")
 
     with tab_g:
+        st.markdown("<br>", unsafe_allow_html=True)
         ga, gb = st.columns(2)
         with ga:
-            # Línea agregada aquí: 5.5
             for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
@@ -253,25 +313,30 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
             dual_bar_explicit("BTTS SÍ", res['BTTS'][0], "BTTS NO", res['BTTS'][1], color="#f1c40f")
 
     with tab_spec:
+        st.markdown("<br>", unsafe_allow_html=True)
         tj_sec, co_sec = st.columns(2)
         with tj_sec:
-            st.markdown("##### 🎴 Mercado de Tarjetas")
+            st.markdown("<h5 style='color:#8b949e;'>🎴 Mercado de Tarjetas</h5>", unsafe_allow_html=True)
             for line, p in res['TARJETAS'].items():
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#e74c3c")
         with co_sec:
-            st.markdown("##### 🚩 Mercado de Corners")
+            st.markdown("<h5 style='color:#8b949e;'>🚩 Mercado de Corners</h5>", unsafe_allow_html=True)
             for line, p in res['CORNERS'].items(): 
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#2ecc71")
 
     with tab_m:
-        st.markdown("##### 💡 Probabilidades de Marcador Exacto")
+        st.markdown("<br>", unsafe_allow_html=True)
         df_matriz = pd.DataFrame(res['MATRIZ'])
         fig = px.imshow(df_matriz, 
                         labels=dict(x="Goles Visitante", y="Goles Local", color="Prob %"),
                         x=[str(i) for i in range(6)],
                         y=[str(i) for i in range(6)],
                         color_continuous_scale='Viridis', text_auto=".1f")
+        fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color="#e1e1e1"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.2 | Motor Dixon-Coles Optimizado | Consistencia Visual OK</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align: center; color: #555; font-size: 0.8rem; font-weight:600; letter-spacing:1px; text-transform:uppercase;'>OR936 Elite v3.2 | Motor Dixon-Coles Optimizado | Premium Analysis Edition</p>", unsafe_allow_html=True)

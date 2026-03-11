@@ -11,13 +11,14 @@ from datetime import datetime
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estados críticos para persistencia
-if 'p_liga_auto' not in st.session_state:
-    st.session_state['p_liga_auto'] = 2.5
-if 'nl_auto' not in st.session_state:
-    st.session_state['nl_auto'] = "Local"
-if 'nv_auto' not in st.session_state:
-    st.session_state['nv_auto'] = "Visitante"
+# Inicialización de estados críticos para persistencia y sincronización
+if 'p_liga_auto' not in st.session_state: st.session_state['p_liga_auto'] = 2.5
+if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
+if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
+if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.7
+if 'lgc_auto' not in st.session_state: st.session_state['lgc_auto'] = 1.2
+if 'vgf_auto' not in st.session_state: st.session_state['vgf_auto'] = 1.5
+if 'vgc_auto' not in st.session_state: st.session_state['vgc_auto'] = 1.1
 
 @st.cache_data(ttl=3600)
 def api_request(action, params=None):
@@ -28,40 +29,6 @@ def api_request(action, params=None):
         return res.json() if res.status_code == 200 else []
     except:
         return []
-
-# =================================================================
-# COMPONENTES VISUALES
-# =================================================================
-def triple_bar(p1, px_val, p2, n1, nx, n2):
-    st.markdown(f"""
-        <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
-            <p style='color:#00ffcc; font-size:0.9em; font-weight:bold; margin-bottom:10px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
-            <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
-                <span>{n1}: <b>{p1:.1f}%</b></span>
-                <span>{nx}: <b>{px_val:.1f}%</b></span>
-                <span>{n2}: <b>{p2:.1f}%</b></span>
-            </div>
-            <div style="display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #333;">
-                <div style="width: {p1}%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc55;"></div>
-                <div style="width: {px_val}%; background: #444;"></div>
-                <div style="width: {p2}%; background: #3498db;"></div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
-    st.markdown(f"""
-        <div style="margin-bottom: 15px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
-                <span><b>{label_over}:</b> {prob_over:.1f}%</span>
-                <span><b>{label_under}:</b> {prob_under:.1f}%</span>
-            </div>
-            <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
-                <div style="width: {prob_over}%; background: {color};"></div>
-                <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
 
 # =================================================================
 # MOTOR MATEMÁTICO (PRO STATS ENGINE)
@@ -99,13 +66,10 @@ class MotorMatematico:
                 if i > j: p1 += p
                 elif i == j: px += p
                 else: p2 += p
-
                 if i > 0 and j > 0: btts_si += p
-
                 for t in g_lines:
                     if (i + j) > t: g_probs[t][0] += p
                     else: g_probs[t][1] += p
-
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
@@ -123,7 +87,41 @@ class MotorMatematico:
         }
 
 # =================================================================
-# INTERFAZ Y SIDEBAR
+# COMPONENTES VISUALES
+# =================================================================
+def triple_bar(p1, px_val, p2, n1, nx, n2):
+    st.markdown(f"""
+        <div style="margin-top: 20px; margin-bottom: 25px; background: #161b22; padding: 15px; border-radius: 12px; border: 1px solid #30363d;">
+            <p style='color:#00ffcc; font-size:0.9em; font-weight:bold; margin-bottom:10px;'>ANÁLISIS DE RESULTADO DIRECTO (1X2)</p>
+            <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 10px; color: #eee;">
+                <span>{n1}: <b>{p1:.1f}%</b></span>
+                <span>{nx}: <b>{px_val:.1f}%</b></span>
+                <span>{n2}: <b>{p2:.1f}%</b></span>
+            </div>
+            <div style="display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #333;">
+                <div style="width: {p1}%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc55;"></div>
+                <div style="width: {px_val}%; background: #444;"></div>
+                <div style="width: {p2}%; background: #3498db;"></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffcc"):
+    st.markdown(f"""
+        <div style="margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 4px;">
+                <span><b>{label_over}:</b> {prob_over:.1f}%</span>
+                <span><b>{label_under}:</b> {prob_under:.1f}%</span>
+            </div>
+            <div style="display: flex; background: #222; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="width: {prob_over}%; background: {color};"></div>
+                <div style="width: {prob_under}%; background: rgba(255,255,255,0.05);"></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# =================================================================
+# INTERFAZ
 # =================================================================
 st.set_page_config(page_title="OR936 Elite v3.2", layout="wide")
 
@@ -158,9 +156,9 @@ with st.sidebar:
             if standings and isinstance(standings, list):
                 total_g = sum(int(t['overall_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                nuevo_promedio = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
-
-                st.session_state['p_liga_auto'] = nuevo_promedio
+                
+                # Actualizar estados globales
+                st.session_state['p_liga_auto'] = float(total_g / (total_pj / 2)) if total_pj > 0 else 2.5
 
                 def buscar(n):
                     for t in standings: 
@@ -176,35 +174,40 @@ with st.sidebar:
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
     else:
-        st.warning("No se detectaron eventos para esta fecha/liga.")
+        st.warning("No se detectaron eventos.")
 
 st.markdown("<h1 style='text-align: center; color: #00ffcc;'>OR936 ELITE ANALYSIS v3.2</h1>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
     st.markdown("### 🏠 Local")
-    nl = st.text_input("Nombre Local", st.session_state.get('nl_auto', "Local"), label_visibility="collapsed")
+    # Vinculamos nombre al state
+    nl = st.text_input("Nombre Local", key='nl_auto', label_visibility="collapsed")
     la, lb = st.columns(2)
-    lgf = la.number_input("Favor L", 0.0, 10.0, st.session_state.get('lgf_auto', 1.7), step=0.1)
-    lgc = lb.number_input("Contra L", 0.0, 10.0, st.session_state.get('lgc_auto', 1.2), step=0.1)
+    # Vinculamos inputs numéricos al state usando KEY
+    lgf = la.number_input("Favor L", 0.0, 10.0, step=0.1, key='lgf_auto')
+    lgc = lb.number_input("Contra L", 0.0, 10.0, step=0.1, key='lgc_auto')
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3, step=0.1), lb.number_input("Corners L", 0.0, 20.0, 5.5, step=0.1)
 
 with col_v:
     st.markdown("### 🚀 Visitante")
-    nv = st.text_input("Nombre Visitante", st.session_state.get('nv_auto', "Visitante"), label_visibility="collapsed")
+    nv = st.text_input("Nombre Visitante", key='nv_auto', label_visibility="collapsed")
     va, vb = st.columns(2)
-    vgf = va.number_input("Favor V", 0.0, 10.0, st.session_state.get('vgf_auto', 1.5), step=0.1)
-    vgc = vb.number_input("Contra V", 0.0, 10.0, st.session_state.get('vgc_auto', 1.1), step=0.1)
+    vgf = va.number_input("Favor V", 0.0, 10.0, step=0.1, key='vgf_auto')
+    vgc = vb.number_input("Contra V", 0.0, 10.0, step=0.1, key='vgc_auto')
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2, step=0.1), vb.number_input("Corners V", 0.0, 20.0, 4.8, step=0.1)
 
-p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, value=st.session_state['p_liga_auto'])
+# CAMBIO CRÍTICO: El slider usa 'p_liga_auto' como KEY.
+p_liga = st.slider("Media Goles Liga (API Sync)", 0.5, 5.0, key='p_liga_auto')
 
 if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     motor = MotorMatematico()
+    # Usamos el valor que tenga el slider (ya sea manual o sincronizado)
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
+    # ... (Resto del código de visualización se mantiene igual) ...
     pool = []
     pool.append({"t": "Doble Oportunidad 1X", "p": res['DC'][0]})
     pool.append({"t": "Doble Oportunidad X2", "p": res['DC'][1]})
@@ -223,10 +226,7 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     v1, v2 = st.columns([1.2, 1])
     with v1:
         st.markdown("#### 💎 Top 6 Sugerencias Maestras")
-        if sug:
-            for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
-        else:
-            st.info("No se encontraron mercados con alta probabilidad definida.")
+        for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> | {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("#### ⚽ Marcadores Probables")
         for i, (score, prob) in enumerate(res['TOP']):
@@ -245,7 +245,6 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            # Línea agregada aquí: 5.5
             for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
                 p = res['GOLES'][line]
                 dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1])
@@ -274,4 +273,4 @@ if st.button("🚀 PROCESAR ANÁLISIS ELITE", use_container_width=True):
         st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.2 | Motor Dixon-Coles Optimizado | Consistencia Visual OK</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; font-size: 0.8em;'>OR936 Elite v3.2 | Motor Dixon-Coles Optimizado | Sincronización API Reforzada</p>", unsafe_allow_html=True)

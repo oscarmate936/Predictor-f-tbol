@@ -326,4 +326,4 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | DIXON-COLES MODEL | OR936 ELITE v3.2</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | DIXON-COLES MODEL | OR936 ELITE v3.2</p>", unsafe_allow_html=True) 

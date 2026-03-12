@@ -183,15 +183,28 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# INTERFAZ Y SIDEBAR (Actualizado con Filtro Local/Visitante)
+# INTERFAZ Y SIDEBAR (Actualizado con Ligas Solicitadas)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
+    
+    # LIGAS ACTUALIZADAS: 5 Grandes Europa, Brasil y El Salvador
     ligas_api = {
-        "La Liga": 302, "Premier League": 152, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, 
-        "UEFA Champions": 3, "Copa Libertadores": 13, "Brasileirão Serie A": 99, 
-        "Liga Mayor SLV": 601, "Copa Presidente SLV": 603, "FA Cup": 145
+        "Premier League (Inglaterra)": 152,
+        "La Liga (España)": 302,
+        "Serie A (Italia)": 207,
+        "Bundesliga (Alemania)": 175,
+        "Ligue 1 (Francia)": 168,
+        "UEFA Champions League": 3,
+        "UEFA Europa League": 4,
+        "Copa Libertadores": 13,
+        "Brasileirão Serie A (Brasil)": 99,
+        "Liga Mayor (El Salvador)": 601,
+        "Copa Presidente (El Salvador)": 603,
+        "FA Cup (Inglaterra)": 145,
+        "Copa del Rey (España)": 300
     }
+    
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     fecha_analisis = st.date_input("📅 Fecha de Jornada", datetime.now())
 
@@ -219,17 +232,16 @@ with st.sidebar:
                     return None
 
                 dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
-                
+
                 if dl and dv:
-                    # CAMBIO REALIZADO: Uso de Home stats para local y Away stats para visitante
                     pj_home = int(dl['home_league_payed'])
                     pj_away = int(dv['away_league_payed'])
-                    
+
                     st.session_state['lgf_auto'] = float(dl['home_league_GF']) / pj_home if pj_home > 0 else 0.0
                     st.session_state['lgc_auto'] = float(dl['home_league_GA']) / pj_home if pj_home > 0 else 0.0
                     st.session_state['vgf_auto'] = float(dv['away_league_GF']) / pj_away if pj_away > 0 else 0.0
                     st.session_state['vgc_auto'] = float(dv['away_league_GA']) / pj_away if pj_away > 0 else 0.0
-                    
+
                     st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                     st.rerun()
 
@@ -324,4 +336,4 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | DIXON-COLES MODEL | OR936 ELITE v3.2</p>", unsafe_allow_html=True) 
+st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | DIXON-COLES MODEL | OR936 ELITE v3.2</p>", unsafe_allow_html=True)

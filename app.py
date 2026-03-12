@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta # AJUSTE 1: Importación para manejo de horas
 import urllib.parse
 from fuzzywuzzy import process
 
@@ -24,7 +24,7 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300) # AJUSTE 2: Cache reducido a 5 min para datos frescos
 def api_request(action, params=None):
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY})
@@ -163,7 +163,10 @@ with st.sidebar:
         "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
-    fecha_analisis = st.date_input("📅 Fecha", datetime.now())
+    
+    # AJUSTE 1: Sincronización con horario El Salvador (UTC-6)
+    hora_local = datetime.now() - timedelta(hours=6)
+    fecha_analisis = st.date_input("📅 Fecha", hora_local)
 
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
 
@@ -210,7 +213,6 @@ st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; mar
 
 col_l, col_v = st.columns(2)
 with col_l:
-    # MODIFICADO: Solo "LOCAL" con color secundario (menta)
     st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900; letter-spacing:2px;'>LOCAL</h6></div>", unsafe_allow_html=True)
     nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
     la, lb = st.columns(2)
@@ -218,7 +220,6 @@ with col_l:
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
-    # MODIFICADO: Solo "VISITANTE" con color primario (oro)
     st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900; letter-spacing:2px;'>VISITANTE</h6></div>", unsafe_allow_html=True)
     nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
     va, vb = st.columns(2)
@@ -291,25 +292,9 @@ if generar:
             st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
     with t5:
-        df_matriz = pd.DataFrame(res['MATRIZ'], 
-                                 index=[f"{i}" for i in range(6)], 
-                                 columns=[f"{j}" for j in range(6)])
-        
-        fig = px.imshow(df_matriz, 
-                        labels=dict(x=f"Goles {nv_manual}", y=f"Goles {nl_manual}", color="% Prob."),
-                        color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], 
-                        text_auto=".1f",
-                        aspect="equal")
-
-        fig.update_layout(
-            title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
-            paper_bgcolor='rgba(0,0,0,0)', 
-            plot_bgcolor='rgba(0,0,0,0)', 
-            font=dict(family="JetBrains Mono", color="#eee", size=12),
-            xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"),
-            yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"),
-            coloraxis_colorbar=dict(title="%", thickness=15)
-        )
+        df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
+        fig = px.imshow(df_matriz, labels=dict(x=f"Goles {nv_manual}", y=f"Goles {nl_manual}", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
+        fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="JetBrains Mono", color="#eee", size=12), xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"), yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)

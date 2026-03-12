@@ -6,7 +6,7 @@ import plotly.express as px
 import requests
 from datetime import datetime
 import urllib.parse
-from fuzzywuzzy import process  # INTEGRACIÓN: Búsqueda difusa
+from fuzzywuzzy import process
 
 # =================================================================
 # CONFIGURACIÓN API & ESTADO
@@ -153,8 +153,6 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
-    
-    # RESTABLECIMIENTO DE TODAS LAS LIGAS ORIGINALES
     ligas_api = {
         "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
@@ -182,7 +180,6 @@ with st.sidebar:
                     st.session_state['p_liga_auto'] = float((h_goals + a_goals) / (total_pj / 2)) if total_pj > 0 else 2.5
                     st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.0
 
-                    # MEJORA: Búsqueda con FuzzyWuzzy
                     def buscar(n):
                         nombres_equipos = [t['team_name'] for t in standings]
                         match, score = process.extractOne(n, nombres_equipos)
@@ -232,7 +229,7 @@ if generar:
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * f_v
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
-    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
+    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
         if 1.5 <= line <= 3.5:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
@@ -275,11 +272,14 @@ if generar:
     with t3:
         dual_bar_explicit(f"1X ({st.session_state['nl_auto']} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
         dual_bar_explicit(f"X2 ({st.session_state['nv_auto']} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
+        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
     with t4:
         ta, co = st.columns(2)
         with ta:
+            st.markdown("<h5 style='color:#ff4b4b; text-align:center;'>PROYECCIÓN DE TARJETAS</h5>", unsafe_allow_html=True)
             for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
         with co:
+            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
     with t5:
         fig = px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f")

@@ -358,4 +358,4 @@ if st.button("REALIZAR CÁLCULO ESTADÍSTICO"):
         st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<p style='text-align:center; color:#475569; font-size:0.7rem; margin-top:50px;'>OR936 ELITE V3.5 - SISTEMA DE ALTA PRECISIÓN</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#475569; font-size:0.7rem; margin-top:50px;'>OR936 ELITE V3.5 - SISTEMA DE ALTA PRECISIÓN</p>", unsafe_allow_html=True) 

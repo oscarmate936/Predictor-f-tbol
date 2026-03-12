@@ -202,17 +202,32 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# INTERFAZ Y SIDEBAR (Restaurado con Ligas Completas)
+# SIDEBAR (Actualizado con todas las ligas de Brasil)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207,
-        "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, "UEFA Champions League": 3,
-        "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
-        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300,
-        "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169,
-        "Brasileirão Serie A (Brasil)": 99, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603
+        "Brasileirão Betano (Série A)": 99,
+        "Brasileirão Série B": 100,
+        "Brasileirão Série C": 103,
+        "Copa de Brasil": 101,
+        "Premier League (Inglaterra)": 152, 
+        "La Liga (España)": 302, 
+        "Serie A (Italia)": 207,
+        "Bundesliga (Alemania)": 175, 
+        "Ligue 1 (Francia)": 168, 
+        "UEFA Champions League": 3,
+        "UEFA Europa League": 4, 
+        "UEFA Conference League": 683, 
+        "Copa Libertadores": 13,
+        "FA Cup (Inglaterra)": 145, 
+        "EFL Cup (Inglaterra)": 146, 
+        "Copa del Rey (España)": 300,
+        "Coppa Italia (Italia)": 209, 
+        "DFB Pokal (Alemania)": 177, 
+        "Coupe de France (Francia)": 169,
+        "Liga Mayor (El Salvador)": 601, 
+        "Copa Presidente (El Salvador)": 603
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     fecha_analisis = st.date_input("📅 Fecha de Jornada", datetime.now())
@@ -269,7 +284,6 @@ with col_v:
 st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media de Goles de la Liga (Referencia)", 0.5, 5.0, key='p_liga_auto')
 
-# BOTONES ACCIÓN
 b1, b2 = st.columns([2, 1])
 with b1: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
@@ -287,7 +301,6 @@ if generar:
 
     sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
-    # COMPARTIR WA
     msg = f"*OR936 ELITE PRO*\n⚽ {nl} vs {nv}\n\n*TOP PICKS:*\n"
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}")
@@ -309,7 +322,6 @@ if generar:
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
 
-    # PESTAÑAS ORIGINALES RESTABLECIDAS
     tab_g, tab_dc, tab_spec, tab_m = st.tabs(["🥅 GOLES", "🏆 MERCADOS 1X2", "🚩 ESPECIALES", "📊 MATRIZ"])
 
     with tab_g:

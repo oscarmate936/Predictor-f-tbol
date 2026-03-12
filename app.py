@@ -218,4 +218,70 @@ with col_v:
     st.markdown("<div style='border-left: 2px solid #d4af37; padding-left: 15px;'><h3 style='margin-bottom:20px; color:#fff;'>🚀 VISITANTE</h3></div>", unsafe_allow_html=True)
     nv = st.text_input("Nombre", key='nv_auto', label_visibility="collapsed")
     va, vb = st.columns(2)
-    vgf, vgc = va.number_input("Goles Favor V", 0.
+    vgf, vgc = va.number_input("Goles Favor V", 0.0, 10.0, step=0.1, key='vgf_auto'), vb.number_input("Goles Contra V", 0.0, 10.0, step=0.1, key='vgc_auto')
+    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2, step=0.1), vb.number_input("Corners V", 0.0, 20.0, 4.8, step=0.1)
+
+p_liga = st.slider("Media de Goles de la Liga (Referencia)", 0.5, 5.0, key='p_liga_auto')
+
+b1, b2 = st.columns([2, 1])
+with b1: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
+
+if generar:
+    motor = MotorMatematico(league_avg=p_liga)
+    hfa = st.session_state['hfa_league']
+    f_l, f_v = st.session_state['form_l'], st.session_state['form_v']
+    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * f_l
+    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * f_v
+    res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
+
+    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
+    for line, p in res['GOLES'].items():
+        if 1.5 <= line <= 3.5:
+            pool.append({"t": f"Over {line} Goles", "p": p[0]})
+            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+
+    sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+
+    msg = f"*OR936 ELITE PRO*\n⚽ {nl} vs {nv}\n\n*TOP PICKS:*\n"
+    for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
+    encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
+    with b2: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR</a>', unsafe_allow_html=True)
+
+    st.markdown('<div class="master-card">', unsafe_allow_html=True)
+    v1, v2 = st.columns([1.5, 1])
+    with v1:
+        st.markdown(f"<h4 style='color:#d4af37; margin-top:0;'>💎 TOP SELECCIONES ELITE (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
+        for s in sug:
+            clase = "elite-alert" if s['p'] > 85 else ""
+            diamante = "💎 " if s['p'] > 85 else ""
+            st.markdown(f'<div class="verdict-item {clase}">{diamante}<b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+    with v2:
+        st.markdown("<h4 style='color:#fff; margin-top:0;'>⚽ MARCADOR EXACTO</h4>", unsafe_allow_html=True)
+        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-weight:300; font-size:0.7em; color:#888;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
+    tab_g, tab_dc, tab_spec, tab_m = st.tabs(["🥅 GOLES", "🏆 MERCADOS 1X2", "🚩 ESPECIALES", "📊 MATRIZ"])
+    with tab_g:
+        ga, gb = st.columns(2)
+        with ga:
+            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
+        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
+    with tab_dc:
+        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 Directo", 100-res['DC'][0], color="#d4af37")
+        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 Directo", 100-res['DC'][1], color="#d4af37")
+        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#00ffa3")
+    with tab_spec:
+        tj_sec, co_sec = st.columns(2)
+        with tj_sec:
+            st.markdown("<h5 style='color:#d4af37;'>🎴 TARJETAS</h5>", unsafe_allow_html=True)
+            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#ff4b4b")
+        with co_sec:
+            st.markdown("<h5 style='color:#00ffa3;'>🚩 TIROS DE ESQUINA</h5>", unsafe_allow_html=True)
+            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#00ffa3")
+    with tab_m:
+        fig = px.imshow(pd.DataFrame(res['MATRIZ']), labels=dict(x="Visitante", y="Local", color="%"), x=[str(i) for i in range(6)], y=[str(i) for i in range(6)], color_continuous_scale=['#0a0c10', '#00ffa3', '#d4af37'], text_auto=".1f")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
+        st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | NUMPY MONTE CARLO SIMULATION | DIXON-COLES MODEL | OR936 ELITE v3.5 PRO</p>", unsafe_allow_html=True)

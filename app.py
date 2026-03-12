@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # AJUSTE: Uso de timezone para precisión absoluta
 import urllib.parse
 from fuzzywuzzy import process
 
@@ -164,12 +164,17 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # AJUSTE DEFINITIVO: Usar UTC para evitar desfases de servidor local
-    # Sincronización absoluta con El Salvador (UTC-6)
-    hora_el_salvador = datetime.utcnow() - timedelta(hours=6)
-    fecha_analisis = st.date_input("📅 Fecha", hora_el_salvador)
+    # AJUSTE DE TIEMPO REAL: Fuerza la fecha de El Salvador sin importar el servidor
+    tz_sv = timezone(timedelta(hours=-6))
+    fecha_hoy_sv = datetime.now(tz_sv).date()
+    fecha_analisis = st.date_input("📅 Fecha", fecha_hoy_sv)
 
-    eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
+    # El filtro de eventos ahora usa la fecha exacta seleccionada
+    eventos = api_request("get_events", {
+        "from": fecha_analisis.strftime("%Y-%m-%d"), 
+        "to": fecha_analisis.strftime("%Y-%m-%d"), 
+        "league_id": ligas_api[nombre_liga]
+    })
 
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}

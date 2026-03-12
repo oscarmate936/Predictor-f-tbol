@@ -210,14 +210,16 @@ st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; mar
 
 col_l, col_v = st.columns(2)
 with col_l:
-    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:#666; margin:0;'>EQUIPO LOCAL (EDITABLE)</h6></div>", unsafe_allow_html=True)
+    # MODIFICADO: Solo "LOCAL" con color secundario (menta)
+    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900; letter-spacing:2px;'>LOCAL</h6></div>", unsafe_allow_html=True)
     nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
     la, lb = st.columns(2)
     lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
-    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:#666; margin:0;'>EQUIPO VISITANTE (EDITABLE)</h6></div>", unsafe_allow_html=True)
+    # MODIFICADO: Solo "VISITANTE" con color primario (oro)
+    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900; letter-spacing:2px;'>VISITANTE</h6></div>", unsafe_allow_html=True)
     nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
     va, vb = st.columns(2)
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
@@ -289,7 +291,6 @@ if generar:
             st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
     with t5:
-        # MAPA DE CALOR MEJORADO E INTUITIVO
         df_matriz = pd.DataFrame(res['MATRIZ'], 
                                  index=[f"{i}" for i in range(6)], 
                                  columns=[f"{j}" for j in range(6)])

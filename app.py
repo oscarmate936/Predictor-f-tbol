@@ -6,6 +6,7 @@ import plotly.express as px
 import requests
 from datetime import datetime
 import urllib.parse
+from fuzzywuzzy import process  # INTEGRACIÓN: Búsqueda difusa
 
 # =================================================================
 # CONFIGURACIÓN API & ESTADO
@@ -13,7 +14,6 @@ import urllib.parse
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estado (Sin cambios en lógica)
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
     'nl_auto': "Local", 'nv_auto': "Visitante", 'lgf_auto': 1.7, 
@@ -32,7 +32,7 @@ def api_request(action, params=None):
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO ELITE (Lógica original + Nueva función Handicap)
+# MOTOR MATEMÁTICO ELITE
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -69,17 +69,12 @@ class MotorMatematico:
                 elif i == j: px += p
                 else: p2 += p
                 if i > 0 and j > 0: btts_si += p
-                
-                # Goles Over/Under
                 for t in g_lines:
                     if (i + j) > t: g_probs[t][0] += p
                     else: g_probs[t][1] += p
-                
-                # Handicap (Nueva Lógica solicitada)
                 for h in h_lines:
                     if (i + h) > j: h_probs_l[h] += p
                     if (j + h) > i: h_probs_v[h] += p
-
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
@@ -105,80 +100,29 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX PROFESIONAL
+# DISEÑO UI/UX 
 # =================================================================
-st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Outfit:wght@300;400;600;900&display=swap');
-    
-    :root {
-        --primary: #d4af37; --secondary: #00ffa3; --bg: #05070a; --card: #0e1117;
-    }
-
+    :root { --primary: #d4af37; --secondary: #00ffa3; --bg: #05070a; }
     html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
     .stApp { background: var(--bg); color: #e0e0e0; }
-    
-    /* Glassmorphism Cards */
-    .master-card { 
-        background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9));
-        padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.6); margin-bottom: 30px;
-    }
-
-    .stat-card {
-        background: rgba(255,255,255,0.03); padding: 15px; border-radius: 16px;
-        border: 1px solid rgba(255,255,255,0.05); text-align: center;
-    }
-
-    .verdict-item { 
-        background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary);
-        padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px;
-        font-size: 1.05em; transition: 0.3s;
-    }
-    .verdict-item:hover { background: rgba(0, 255, 163, 0.08); transform: translateX(5px); }
-    
-    .elite-alert { 
-        background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(0,255,163,0.05));
-        border: 1px solid var(--primary); box-shadow: 0 0 20px rgba(212,175,55,0.2);
-    }
-
-    .score-badge { 
-        background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4);
-        margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em;
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Buttons */
-    .stButton>button { 
-        background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%);
-        color: #000 !important; font-weight: 900; border: none; padding: 20px;
-        border-radius: 14px; text-transform: uppercase; letter-spacing: 3px;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    .stButton>button:hover { transform: scale(1.02); box-shadow: 0 0 30px rgba(212,175,55,0.4); }
-
-    .whatsapp-btn { 
-        display: flex; align-items: center; justify-content: center; background: #25D366;
-        color: white !important; padding: 14px; border-radius: 14px; text-decoration: none;
-        font-weight: 700; gap: 10px; margin-top: 5px;
-    }
-
-    /* Tabs Customization */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; background: transparent; }
-    .stTabs [data-baseweb="tab"] {
-        background: rgba(255,255,255,0.05); border-radius: 10px 10px 0 0;
-        padding: 10px 25px; color: #888;
-    }
-    .stTabs [aria-selected="true"] { background: var(--primary) !important; color: #000 !important; font-weight: bold; }
+    .master-card { background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9)); padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15); box-shadow: 0 20px 40px rgba(0,0,0,0.6); margin-bottom: 30px; }
+    .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; font-size: 1.05em; }
+    .elite-alert { background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(0,255,163,0.05)); border: 1px solid var(--primary); }
+    .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
+    .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
 def triple_bar(p1, px_val, p2, n1, nx, n2):
     st.markdown(f"""
         <div style="margin: 30px 0; background: #0a0c10; padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #aaa; text-transform: uppercase; margin-bottom: 15px; font-weight: 600;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #aaa; text-transform: uppercase; margin-bottom: 15px;">
                 <span style="color:var(--secondary)">{n1}: <b>{p1:.1f}%</b></span>
                 <span>{nx}: <b>{px_val:.1f}%</b></span>
                 <span style="color:var(--primary)">{n2}: <b>{p2:.1f}%</b></span>
@@ -195,38 +139,40 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     st.markdown(f"""
         <div style="margin-bottom: 22px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 8px;">
-                <span style="font-weight: 600;">{label_over} <span style="color:{color}; font-size: 1.1em;">{prob_over:.1f}%</span></span>
+                <span style="font-weight: 600;">{label_over} <span style="color:{color};">{prob_over:.1f}%</span></span>
                 <span style="color: #666;">{prob_under:.1f}% {label_under}</span>
             </div>
-            <div style="display: flex; background: #111; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);">
-                <div style="width: {prob_over}%; background: {color}; box-shadow: 0 0 10px {color}88;"></div>
+            <div style="display: flex; background: #111; height: 10px; border-radius: 5px; overflow: hidden;">
+                <div style="width: {prob_over}%; background: {color};"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR (Control Panel)
+# SIDEBAR
 # =================================================================
 with st.sidebar:
-    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900; letter-spacing:2px;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
-    st.markdown("<hr style='border-color: rgba(212,175,55,0.2);'>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     
+    # RESTABLECIMIENTO DE TODAS LAS LIGAS ORIGINALES
     ligas_api = {
-        "Brasileirão Serie A": 99, "Brasileirão Serie B": 100, "Premier League": 152, "La Liga": 302, 
-        "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, "Champions League": 3, "Europa League": 4, 
-        "Copa Libertadores": 13, "Liga Mayor (ES)": 601
+        "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
+        "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
+        "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
+        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169,
+        "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603
     }
-    nombre_liga = st.selectbox("🏆 COMPETICIÓN", list(ligas_api.keys()))
-    fecha_analisis = st.date_input("📅 JORNADA", datetime.now())
+    nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
+    fecha_analisis = st.date_input("📅 Fecha", datetime.now())
 
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
 
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 EVENTO SELECCIONADO", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Evento", list(op_p.keys()))
 
-        if st.button("SINCRO & ANALIZAR"):
-            with st.spinner("CALIBRANDO MOTOR QUANTUM..."):
+        if st.button("SYNC DATA"):
+            with st.spinner("Sincronizando..."):
                 standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
                 if standings and isinstance(standings, list):
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
@@ -236,9 +182,13 @@ with st.sidebar:
                     st.session_state['p_liga_auto'] = float((h_goals + a_goals) / (total_pj / 2)) if total_pj > 0 else 2.5
                     st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.0
 
+                    # MEJORA: Búsqueda con FuzzyWuzzy
                     def buscar(n):
-                        for t in standings: 
-                            if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
+                        nombres_equipos = [t['team_name'] for t in standings]
+                        match, score = process.extractOne(n, nombres_equipos)
+                        if score > 60:
+                            for t in standings:
+                                if t['team_name'] == match: return t
                         return None
 
                     dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
@@ -253,45 +203,35 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
 
-# =================================================================
-# MAIN DASHBOARD
-# =================================================================
-st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0; font-size: 3.5em;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; font-size: 1em; letter-spacing: 5px; margin-bottom: 50px;'>PREDICTIVE ENGINE V3.5 PRO • 15K MONTE CARLO ITERATIONS</p>", unsafe_allow_html=True)
+# CONTENIDO PRINCIPAL
+st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + FUZZY LOGIC</p>", unsafe_allow_html=True)
 
-# Input Panel
-with st.container():
-    c1, c2, c3 = st.columns([1, 0.1, 1])
-    with c1:
-        st.markdown(f"<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 20px;'><h2 style='color:var(--secondary); margin:0;'>{st.session_state['nl_auto'].upper()}</h2><p style='color:#666;'>ESCUADRA LOCAL</p></div>", unsafe_allow_html=True)
-        la, lb = st.columns(2)
-        lgf = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto')
-        lgc = lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
-        ltj = la.number_input("Tarjetas L", 0.0, 15.0, 2.3)
-        lco = lb.number_input("Corners L", 0.0, 20.0, 5.5)
-    with c3:
-        st.markdown(f"<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 20px;'><h2 style='color:var(--primary); margin:0;'>{st.session_state['nv_auto'].upper()}</h2><p style='color:#666;'>ESCUADRA VISITANTE</p></div>", unsafe_allow_html=True)
-        va, vb = st.columns(2)
-        vgf = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto')
-        vgc = vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
-        vtj = va.number_input("Tarjetas V", 0.0, 15.0, 2.2)
-        vco = vb.number_input("Corners V", 0.0, 20.0, 4.8)
+col_l, col_v = st.columns(2)
+with col_l:
+    st.markdown(f"<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px;'><h2 style='color:var(--secondary); margin:0;'>{st.session_state['nl_auto'].upper()}</h2></div>", unsafe_allow_html=True)
+    la, lb = st.columns(2)
+    lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
+    ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    p_liga = st.slider("MEDIA GOLES LIGA", 0.5, 5.0, key='p_liga_auto')
+with col_v:
+    st.markdown(f"<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px;'><h2 style='color:var(--primary); margin:0;'>{st.session_state['nv_auto'].upper()}</h2></div>", unsafe_allow_html=True)
+    va, vb = st.columns(2)
+    vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
+    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
-    b_exec, b_share = st.columns([3, 1])
-    with b_exec: generar = st.button("EJECUTAR ANÁLISIS PROBABILÍSTICO")
+p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto')
+
+b_ex, b_wa = st.columns([3, 1])
+with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga)
-    hfa = st.session_state['hfa_league']
-    f_l, f_v = st.session_state['form_l'], st.session_state['form_v']
+    hfa, f_l, f_v = st.session_state['hfa_league'], st.session_state['form_l'], st.session_state['form_v']
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * f_l
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * f_v
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
-    # Construcción de Picks
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
         if 1.5 <= line <= 3.5:
@@ -299,79 +239,51 @@ if generar:
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
-    # Botón WhatsApp
-    msg = f"*OR936 ELITE PRO*\n⚽ {st.session_state['nl_auto']} vs {st.session_state['nv_auto']}\n\n*TOP PICKS:*\n"
+    msg = f"*OR936 ELITE*\n⚽ {st.session_state['nl_auto']} vs {st.session_state['nv_auto']}\n\n*PICKS:*\n"
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
-    encoded_msg = urllib.parse.quote(msg + f"\n*SCORE:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
-    with b_share: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
+    encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
+    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR</a>', unsafe_allow_html=True)
 
-    # DASHBOARD RESULTS
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
-    v1, v2 = st.columns([1.6, 1])
+    v1, v2 = st.columns([1.5, 1])
     with v1:
-        st.markdown(f"<h3 style='color:var(--primary); margin-top:0;'>💎 TOP SELECCIONES QUANTUM (Confianza: {res['BRIER']*100:.1f}%)</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
         for s in sug:
             clase = "elite-alert" if s['p'] > 85 else ""
-            diamante = "💎 " if s['p'] > 85 else ""
-            st.markdown(f'<div class="verdict-item {clase}">{diamante}<b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="verdict-item {clase}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
-        st.markdown("<h3 style='color:#fff; margin-top:0; text-align:center;'>🎯 SCORE MÁS PROBABLE</h3>", unsafe_allow_html=True)
-        for score, prob in res['TOP']: 
-            st.markdown(f'<div class="score-badge">{score} <span style="font-weight:300; font-size:0.6em; color:#888;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
+        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], st.session_state['nl_auto'], "Empate", st.session_state['nv_auto'])
 
-    # TABS PROFESIONALES
     t1, t2, t3, t4, t5 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ"])
-    
     with t1:
         ga, gb = st.columns(2)
         with ga:
             for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-
     with t2:
-        st.markdown("<h4 style='color:var(--primary);'>ANÁLISIS DE HANDICAP ASIÁTICO / EUROPEO</h4>", unsafe_allow_html=True)
         ha, hb = st.columns(2)
         with ha:
             st.markdown(f"<h5 style='color:var(--secondary);'>{st.session_state['nl_auto']}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['L'].items():
-                label = f"Hándicap {h:+}"
-                dual_bar_explicit(label, p, "", 100-p, color="#00ffa3")
+            for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
         with hb:
             st.markdown(f"<h5 style='color:var(--primary);'>{st.session_state['nv_auto']}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['V'].items():
-                label = f"Hándicap {h:+}"
-                dual_bar_explicit(label, p, "", 100-p, color="#d4af37")
-
+            for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
     with t3:
-        dual_bar_explicit(f"1X ({st.session_state['nl_auto']} o Empate)", res['DC'][0], f"2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({st.session_state['nv_auto']} o Empate)", res['DC'][1], f"1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-
+        dual_bar_explicit(f"1X ({st.session_state['nl_auto']} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
+        dual_bar_explicit(f"X2 ({st.session_state['nv_auto']} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
     with t4:
-        tj_sec, co_sec = st.columns(2)
-        with tj_sec:
-            st.markdown("<h5 style='color:#ff4b4b; text-align:center;'>🎴 PROYECCIÓN TARJETAS</h5>", unsafe_allow_html=True)
-            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#ff4b4b")
-        with co_sec:
-            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>🚩 PROYECCIÓN CÓRNERS</h5>", unsafe_allow_html=True)
-            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#00ffa3")
-
+        ta, co = st.columns(2)
+        with ta:
+            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
+        with co:
+            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
     with t5:
-        df_matriz = pd.DataFrame(res['MATRIZ'], 
-                                 index=[f"Local {i}" for i in range(6)], 
-                                 columns=[f"Visita {j}" for j in range(6)])
-        fig = px.imshow(df_matriz, 
-                        labels=dict(x="Goles Visitante", y="Goles Local", color="% Prob"),
-                        color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], 
-                        text_auto=".1f")
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="JetBrains Mono", color="#eee"),
-            margin=dict(l=20, r=20, t=20, b=20)
-        )
+        fig = px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f")
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<br><br><p style='text-align: center; color: #333; font-size: 0.8em; font-family:JetBrains Mono;'>ENCRYPTED SESSION | AES-256 QUANTUM CALIBRATION | SYSTEM AUTHENTICATED</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)

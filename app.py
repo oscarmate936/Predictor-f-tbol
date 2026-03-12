@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from datetime import datetime, timedelta, timezone # AJUSTE: Uso de timezone para precisión absoluta
+from datetime import datetime, timedelta, timezone # Uso de timezone para precisión
 import urllib.parse
 from fuzzywuzzy import process
 
@@ -164,12 +164,12 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # AJUSTE DE TIEMPO REAL: Fuerza la fecha de El Salvador sin importar el servidor
+    # SINCRONIZACIÓN FORZOSA EL SALVADOR
     tz_sv = timezone(timedelta(hours=-6))
     fecha_hoy_sv = datetime.now(tz_sv).date()
-    fecha_analisis = st.date_input("📅 Fecha", fecha_hoy_sv)
+    fecha_analisis = st.date_input("📅 Fecha", value=fecha_hoy_sv)
 
-    # El filtro de eventos ahora usa la fecha exacta seleccionada
+    # Carga de eventos basada estrictamente en la fecha del selector
     eventos = api_request("get_events", {
         "from": fecha_analisis.strftime("%Y-%m-%d"), 
         "to": fecha_analisis.strftime("%Y-%m-%d"), 
@@ -181,6 +181,8 @@ with st.sidebar:
         p_sel = st.selectbox("📍 Evento en Vivo", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
+            # Limpiar caché para forzar la actualización de datos
+            st.cache_data.clear()
             with st.spinner("Sincronizando..."):
                 standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
                 if standings and isinstance(standings, list):

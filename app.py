@@ -5,6 +5,7 @@ import plotly.express as px
 import requests
 from datetime import datetime
 import urllib.parse
+import random # Nuevo para Simulación Montecarlo
 
 # =================================================================
 # CONFIGURACIÓN API
@@ -12,11 +13,10 @@ import urllib.parse
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# Inicialización de estados (Añadido: Factor de Forma y HFA)
 if 'p_liga_auto' not in st.session_state: st.session_state['p_liga_auto'] = 2.5
 if 'hfa_league' not in st.session_state: st.session_state['hfa_league'] = 1.0
-if 'form_l' not in st.session_state: st.session_state['form_l'] = 1.0 # Factor de forma Local
-if 'form_v' not in st.session_state: st.session_state['form_v'] = 1.0 # Factor de forma Visitante
+if 'form_l' not in st.session_state: st.session_state['form_l'] = 1.0
+if 'form_v' not in st.session_state: st.session_state['form_v'] = 1.0
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.7
@@ -34,18 +34,26 @@ def api_request(action, params=None):
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO (Mejora: Rho Dinámico y Brier Score Logic)
+# MOTOR MATEMÁTICO (Upgrade: Montecarlo + Dixon-Coles)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        # MEJORA 1: RHO DINÁMICO
-        # Ajusta la correlación de empates bajos según el promedio de la liga
         self.rho = -0.10 if league_avg > 3.0 else -0.18 if league_avg < 2.2 else -0.15
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
         try: return (lam**k * math.exp(-lam)) / math.factorial(k)
         except: return 0.0
+
+    # Simulación de variable aleatoria Poisson para Montecarlo
+    def simular_poisson(self, lam):
+        L = math.exp(-lam)
+        k = 0
+        p = 1.0
+        while p > L:
+            k += 1
+            p *= random.random()
+        return k - 1
 
     def dixon_coles_ajuste(self, x, y, lam, mu):
         if x == 0 and y == 0: return 1 - (lam * mu * self.rho)
@@ -54,11 +62,8 @@ class MotorMatematico:
         elif x == 1 and y == 1: return 1 - self.rho
         return 1.0
 
-    def calcular_ou_prob(self, valor_esperado, threshold):
-        prob_under = sum(self.poisson_prob(k, valor_esperado) for k in range(int(math.floor(threshold)) + 1))
-        return (1 - prob_under) * 100, prob_under * 100
-
     def procesar(self, xg_l, xg_v, tj_total, co_total):
+        # 1. GENERACIÓN DE MATRIZ BASE (Dixon-Coles)
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
@@ -79,8 +84,21 @@ class MotorMatematico:
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
 
+        # 2. SIMULACIÓN MONTECARLO (10,000 iteraciones para Especiales)
+        sim_tj = {t: 0 for t in [2.5, 3.5, 4.5, 5.5, 6.5]}
+        sim_co = {t: 0 for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]}
+        iteraciones = 10000
+        
+        for _ in range(iteraciones):
+            # Simular Tarjetas y Corners aleatoriamente según la media esperada
+            s_tj = self.simular_poisson(tj_total)
+            s_co = self.simular_poisson(co_total)
+            for t in sim_tj: 
+                if s_tj > t: sim_tj[t] += 1
+            for t in sim_co: 
+                if s_co > t: sim_co[t] += 1
+
         total = max(0.0001, p1 + px + p2)
-        # MEJORA: Cálculo de Brier Score Teórico (Confianza del modelo)
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 0.1))
 
         return {
@@ -88,15 +106,16 @@ class MotorMatematico:
             "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
             "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
             "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
-            "TARJETAS": {t: self.calcular_ou_prob(tj_total, t) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
-            "CORNERS": {t: self.calcular_ou_prob(co_total, t) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
+            # Resultados refinados por Montecarlo
+            "TARJETAS": {t: (v/iteraciones*100, (1-v/iteraciones)*100) for t, v in sim_tj.items()},
+            "CORNERS": {t: (v/iteraciones*100, (1-v/iteraciones)*100) for t, v in sim_co.items()},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
             "MATRIZ": matriz,
             "BRIER": confianza
         }
 
 # =================================================================
-# DISEÑO PREMIUM (UI/UX CUSTOM) - SIN CAMBIOS VISUALES
+# DISEÑO PREMIUM (UI/UX) - INTACTO
 # =================================================================
 st.set_page_config(page_title="OR936 PRO ELITE", layout="wide")
 
@@ -147,7 +166,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR (Actualizado con Mejora 2 y 3: Forma y HFA)
+# SIDEBAR - INTACTO CON LIGAS
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -170,7 +189,6 @@ with st.sidebar:
         if st.button("SYNC DATA"):
             standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
             if standings and isinstance(standings, list):
-                # MEJORA 3: Calcular HFA de la Liga
                 h_goals = sum(int(t['home_league_GF']) for t in standings)
                 a_goals = sum(int(t['away_league_GF']) for t in standings)
                 total_pj = sum(int(t['overall_league_payed']) for t in standings)
@@ -185,11 +203,8 @@ with st.sidebar:
 
                 dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
                 if dl and dv:
-                    # MEJORA 2: Factor de Recencia (Simulado con Form de los últimos 5)
-                    # La API devuelve 'overall_league_W/D/L', pero usamos el 'overall_league_position' y stats
                     st.session_state['form_l'] = 1.15 if int(dl['overall_league_position']) < int(dv['overall_league_position']) else 0.95
                     st.session_state['form_v'] = 1.10 if int(dv['overall_league_position']) < int(dl['overall_league_position']) else 0.90
-                    
                     pj_h, pj_a = int(dl['home_league_payed']), int(dv['away_league_payed'])
                     st.session_state['lgf_auto'] = float(dl['home_league_GF'])/pj_h if pj_h>0 else 0.0
                     st.session_state['lgc_auto'] = float(dl['home_league_GA'])/pj_h if pj_h>0 else 0.0
@@ -200,7 +215,7 @@ with st.sidebar:
 
 # CONTENIDO PRINCIPAL
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666; font-size: 0.9em; margin-bottom: 40px;'>PREDICTIVE INTELLIGENCE ENGINE V3.5 PRO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; font-size: 0.9em; margin-bottom: 40px;'>PREDICTIVE INTELLIGENCE ENGINE V3.5 PRO + MONTE CARLO</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -224,13 +239,10 @@ with b1: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga)
-    # AJUSTE PRO: xG con Factor HFA de Liga y Forma de Recencia
     hfa = st.session_state['hfa_league']
     f_l, f_v = st.session_state['form_l'], st.session_state['form_v']
-    
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * f_l
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * f_v
-    
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
 
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
@@ -260,13 +272,11 @@ if generar:
     st.markdown('</div>', unsafe_allow_html=True)
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
-
-    # PESTAÑAS ORIGINALES RESTABLECIDAS
     tab_g, tab_dc, tab_spec, tab_m = st.tabs(["🥅 GOLES", "🏆 MERCADOS 1X2", "🚩 ESPECIALES", "📊 MATRIZ"])
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
-            for line in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {line}", res['GOLES'][line][0], f"UNDER {line}", res['GOLES'][line][1])
+            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
     with tab_dc:
         dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 Directo", 100-res['DC'][0], color="#d4af37")
@@ -276,13 +286,13 @@ if generar:
         tj_sec, co_sec = st.columns(2)
         with tj_sec:
             st.markdown("<h5 style='color:#d4af37;'>🎴 TARJETAS</h5>", unsafe_allow_html=True)
-            for line, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#ff4b4b")
+            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#ff4b4b")
         with co_sec:
             st.markdown("<h5 style='color:#00ffa3;'>🚩 TIROS DE ESQUINA</h5>", unsafe_allow_html=True)
-            for line, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {line}", p[0], f"Under {line}", p[1], color="#00ffa3")
+            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#00ffa3")
     with tab_m:
         fig = px.imshow(pd.DataFrame(res['MATRIZ']), labels=dict(x="Visitante", y="Local", color="%"), x=[str(i) for i in range(6)], y=[str(i) for i in range(6)], color_continuous_scale=['#0a0c10', '#00ffa3', '#d4af37'], text_auto=".1f")
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | DIXON-COLES MODEL | OR936 ELITE v3.5 PRO</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | MONTE CARLO SIMULATION | DIXON-COLES MODEL | OR936 ELITE v3.5 PRO</p>", unsafe_allow_html=True)

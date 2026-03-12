@@ -7,13 +7,16 @@ import requests
 from datetime import datetime, timedelta, timezone
 import urllib.parse
 from fuzzywuzzy import process
-import time
 
 # =================================================================
 # CONFIGURACIÓN API & ESTADO
 # =================================================================
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
+
+# SINCRONIZACIÓN ABSOLUTA EL SALVADOR (UTC-6)
+tz_sv = timezone(timedelta(hours=-6))
+ahora_sv = datetime.now(tz_sv)
 
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
@@ -25,18 +28,24 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función de solicitud con bypass de caché opcional
-def api_request(action, params=None, bypass_cache=False):
+# FUNCIÓN LIVE: Sin caché para asegurar que los partidos sean los de HOY
+def api_request_live(action, params=None):
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY})
-    
-    # Si queremos forzar datos nuevos, añadimos un timestamp aleatorio que la API ignora pero el caché no
-    if bypass_cache:
-        params.update({"_cache_buster": time.time()})
-        
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
-        return res.json() if res.status_code == 200 else []
+        data = res.json()
+        return data if isinstance(data, list) else []
+    except: return []
+
+# FUNCIÓN CACHED: Solo para standings (Posiciones) para no saturar la API
+@st.cache_data(ttl=600)
+def api_request_cached(action, league_id):
+    params = {"action": action, "APIkey": API_KEY, "league_id": league_id}
+    try:
+        res = requests.get(BASE_URL, params=params, timeout=10)
+        data = res.json()
+        return data if isinstance(data, list) else []
     except: return []
 
 # =================================================================
@@ -87,22 +96,21 @@ class MotorMatematico:
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
 
-        iteraciones = 15000
-        sim_tj = np.random.poisson(tj_total, iteraciones)
-        sim_co = np.random.poisson(co_total, iteraciones)
-        tj_probs = {t: (np.sum(sim_tj > t)/iteraciones*100, np.sum(sim_tj <= t)/iteraciones*100) for t in [2.5, 3.5, 4.5, 5.5, 6.5]}
-        co_probs = {t: (np.sum(sim_co > t)/iteraciones*100, np.sum(sim_co <= t)/iteraciones*100) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]}
-
         total = max(0.0001, p1 + px + p2)
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.0))
 
+        # Montecarlo rápido
+        sim_tj = np.random.poisson(tj_total, 15000)
+        sim_co = np.random.poisson(co_total, 15000)
+        
         return {
             "1X2": (p1/total*100, px/total*100, p2/total*100), 
             "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
             "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
             "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
             "HANDICAPS": {"L": {h: v/total*100 for h,v in h_probs_l.items()}, "V": {h: v/total*100 for h,v in h_probs_v.items()}},
-            "TARJETAS": tj_probs, "CORNERS": co_probs,
+            "TARJETAS": {t: (np.sum(sim_tj > t)/150, np.sum(sim_tj <= t)/150) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
+            "CORNERS": {t: (np.sum(sim_co > t)/150, np.sum(sim_co <= t)/150) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
             "MATRIZ": matriz, "BRIER": confianza
         }
@@ -170,30 +178,22 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # CONTROL ABSOLUTO DE TIEMPO (UTC-6 El Salvador)
-    tz_sv = timezone(timedelta(hours=-6))
-    fecha_actual_sv = datetime.now(tz_sv).date()
-    
-    # El widget de fecha ahora es la única fuente de verdad
-    fecha_analisis = st.date_input("📅 Fecha de Análisis", value=fecha_actual_sv)
-    str_fecha = fecha_analisis.strftime('%Y-%m-%d')
+    # Selector de fecha - Sincronizado con El Salvador
+    fecha_hoy = ahora_sv.date()
+    fecha_analisis = st.date_input("📅 FECHA DE JORNADA", value=fecha_hoy)
+    f_str = fecha_analisis.strftime('%Y-%m-%d')
 
-    # Consulta de eventos (Sin caché para asegurar que traiga lo seleccionado)
-    eventos = api_request("get_events", {
-        "from": str_fecha, 
-        "to": str_fecha, 
-        "league_id": ligas_api[nombre_liga]
-    }, bypass_cache=True)
+    # CONSULTA EN TIEMPO REAL SIN CACHÉ
+    eventos = api_request_live("get_events", {"from": f_str, "to": f_str, "league_id": ligas_api[nombre_liga]})
 
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 Eventos Encontrados", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Eventos Hoy", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
-            # Limpieza total para no arrastrar datos de partidos anteriores
-            st.cache_data.clear()
-            with st.spinner("CALIBRANDO DATOS..."):
-                standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]}, bypass_cache=True)
+            st.cache_data.clear() # Limpia todo para asegurar que los datos sean nuevos
+            with st.spinner("CALIBRANDO..."):
+                standings = api_request_cached("get_standings", ligas_api[nombre_liga])
                 if standings and isinstance(standings, list):
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
                     a_goals = sum(int(t['away_league_GF']) for t in standings)
@@ -221,25 +221,23 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = float(dv['away_league_GA'])/pj_a if pj_a>0 else 1.3
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
-    else:
-        st.warning("No hay partidos para esta fecha.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO • QUANTUM SYNC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + SYNC</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
-    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900; letter-spacing:2px;'>LOCAL</h6></div>", unsafe_allow_html=True)
+    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900;'>LOCAL</h6></div>", unsafe_allow_html=True)
     nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
     la, lb = st.columns(2)
     lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
-    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900; letter-spacing:2px;'>VISITANTE</h6></div>", unsafe_allow_html=True)
+    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900;'>VISITANTE</h6></div>", unsafe_allow_html=True)
     nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
     va, vb = st.columns(2)
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
@@ -282,38 +280,4 @@ if generar:
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
-
-    t1, t2, t3, t4, t5 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ"])
-    with t1:
-        ga, gb = st.columns(2)
-        with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
-        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    with t2:
-        ha, hb = st.columns(2)
-        with ha:
-            st.markdown(f"<h5 style='color:var(--secondary);'>{nl_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
-        with hb:
-            st.markdown(f"<h5 style='color:var(--primary);'>{nv_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
-    with t3:
-        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-    with t4:
-        ta, co = st.columns(2)
-        with ta:
-            st.markdown("<h5 style='color:#ff4b4b; text-align:center;'>PROYECCIÓN DE TARJETAS</h5>", unsafe_allow_html=True)
-            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
-        with co:
-            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
-            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
-    with t5:
-        df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
-        fig = px.imshow(df_matriz, labels=dict(x=f"Goles {nv_manual}", y=f"Goles {nl_manual}", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
-        fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="JetBrains Mono", color="#eee", size=12), xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"), yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
-        st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)
+    triple_bar(res['1X2']

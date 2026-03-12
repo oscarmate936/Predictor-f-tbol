@@ -1,3 +1,7 @@
 streamlit
 pandas
+numpy
 plotly
+requests
+fuzzywuzzy
+python-Levenshtein

@@ -1,11 +1,12 @@
 import streamlit as st
 import math
 import pandas as pd
-import numpy as np  # MEJORA: Vectorización
+import numpy as np
 import plotly.express as px
 import requests
 from datetime import datetime
 import urllib.parse
+from fuzzywuzzy import fuzz, process # NUEVA INTEGRACIÓN
 
 # =================================================================
 # CONFIGURACIÓN API
@@ -34,11 +35,10 @@ def api_request(action, params=None):
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO ELITE (Upgrade Interno)
+# MOTOR MATEMÁTICO ELITE (Con Handicap Integrado)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        # Ajuste dinámico de Rho basado en la tendencia de la liga
         if league_avg > 3.0: self.rho = -0.10
         elif league_avg < 2.2: self.rho = -0.18
         else: self.rho = -0.15
@@ -56,11 +56,12 @@ class MotorMatematico:
         return 1.0
 
     def procesar(self, xg_l, xg_v, tj_total, co_total):
-        # 1. MATRIZ BASE (Dixon-Coles)
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
+        h_lines = [-1.5, -0.5, 0.5, 1.5] # Líneas de Handicap para el Local
         g_probs = {t: [0.0, 0.0] for t in g_lines}
+        h_probs = {t: 0.0 for t in h_lines}
 
         for i in range(10): 
             fila = []
@@ -73,21 +74,21 @@ class MotorMatematico:
                 for t in g_lines:
                     if (i + j) > t: g_probs[t][0] += p
                     else: g_probs[t][1] += p
+                # Cálculo de Handicap
+                for h in h_lines:
+                    if (i + h) > j: h_probs[h] += p
+                
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
 
-        # 2. SIMULACIÓN MONTECARLO VECTORIZADA (MEJORA: NumPy)
-        # Reemplaza el loop por operaciones matriciales rápidas
         iteraciones = 15000
         sim_tj = np.random.poisson(tj_total, iteraciones)
         sim_co = np.random.poisson(co_total, iteraciones)
-
         tj_probs = {t: (np.sum(sim_tj > t)/iteraciones*100, np.sum(sim_tj <= t)/iteraciones*100) for t in [2.5, 3.5, 4.5, 5.5, 6.5]}
         co_probs = {t: (np.sum(sim_co > t)/iteraciones*100, np.sum(sim_co <= t)/iteraciones*100) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]}
 
         total = max(0.0001, p1 + px + p2)
-        # Índice de Estabilidad (Confianza)
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.0))
 
         return {
@@ -95,6 +96,7 @@ class MotorMatematico:
             "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
             "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
             "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
+            "HANDICAP": {t: p/total*100 for t, p in h_probs.items()},
             "TARJETAS": tj_probs,
             "CORNERS": co_probs,
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
@@ -103,7 +105,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX (IDÉNTICO AL ORIGINAL)
+# DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 PRO ELITE", layout="wide")
 
@@ -174,23 +176,28 @@ with st.sidebar:
         p_sel = st.selectbox("📍 Eventos en Vivo", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
-            # MEJORA: Feedback de carga
-            with st.spinner("Analizando métricas de competición..."):
+            with st.spinner("Sincronizando con Inteligencia Difusa..."):
                 standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
                 if standings and isinstance(standings, list):
-                    h_goals = sum(int(t['home_league_GF']) for t in standings)
-                    a_goals = sum(int(t['away_league_GF']) for t in standings)
-                    total_pj = sum(int(t['overall_league_payed']) for t in standings)
+                    h_goals = sum(int(t.get('home_league_GF', 0)) for t in standings)
+                    a_goals = sum(int(t.get('away_league_GF', 0)) for t in standings)
+                    total_pj = sum(int(t.get('overall_league_payed', 0)) for t in standings)
 
                     st.session_state['p_liga_auto'] = float((h_goals + a_goals) / (total_pj / 2)) if total_pj > 0 else 2.5
                     st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.0
 
-                    def buscar(n):
-                        for t in standings: 
-                            if n.lower() in t['team_name'].lower() or t['team_name'].lower() in n.lower(): return t
+                    # MEJORA: FUZZYWUZZY SEARCH
+                    def buscar_fuzzy(n, lista_standings):
+                        names = [t['team_name'] for t in lista_standings]
+                        match, score = process.extractOne(n, names, scorer=fuzz.token_set_ratio)
+                        if score > 65: # Umbral de confianza
+                            for t in lista_standings:
+                                if t['team_name'] == match: return t
                         return None
 
-                    dl, dv = buscar(op_p[p_sel]['match_hometeam_name']), buscar(op_p[p_sel]['match_awayteam_name'])
+                    dl = buscar_fuzzy(op_p[p_sel]['match_hometeam_name'], standings)
+                    dv = buscar_fuzzy(op_p[p_sel]['match_awayteam_name'], standings)
+                    
                     if dl and dv:
                         st.session_state['form_l'] = 1.15 if int(dl['overall_league_position']) < int(dv['overall_league_position']) else 0.95
                         st.session_state['form_v'] = 1.10 if int(dv['overall_league_position']) < int(dl['overall_league_position']) else 0.90
@@ -201,10 +208,12 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = float(dv['away_league_GA'])/pj_a if pj_a>0 else 0.0
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
+                    else:
+                        st.sidebar.error("No se encontraron equipos en esta tabla. Verifique la competición.")
 
-# CONTENIDO PRINCIPAL (IDÉNTICO)
+# CONTENIDO PRINCIPAL
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666; font-size: 0.9em; margin-bottom: 40px;'>PREDICTIVE INTELLIGENCE ENGINE V3.5 PRO + NUMPY MONTE CARLO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; font-size: 0.9em; margin-bottom: 40px;'>PREDICTIVE INTELLIGENCE ENGINE V3.5 PRO + FUZZY MATCHING</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -236,9 +245,7 @@ if generar:
 
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
-        if 1.5 <= line <= 3.5:
-            pool.append({"t": f"Over {line} Goles", "p": p[0]})
-            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+        if 1.5 <= line <= 3.5: pool.append({"t": f"Over {line} Goles", "p": p[0]})
 
     sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
@@ -253,24 +260,34 @@ if generar:
         st.markdown(f"<h4 style='color:#d4af37; margin-top:0;'>💎 TOP SELECCIONES ELITE (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
         for s in sug:
             clase = "elite-alert" if s['p'] > 85 else ""
-            diamante = "💎 " if s['p'] > 85 else ""
-            st.markdown(f'<div class="verdict-item {clase}">{diamante}<b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="verdict-item {clase}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("<h4 style='color:#fff; margin-top:0;'>⚽ MARCADOR EXACTO</h4>", unsafe_allow_html=True)
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-weight:300; font-size:0.7em; color:#888;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl, "Empate", nv)
-    tab_g, tab_dc, tab_spec, tab_m = st.tabs(["🥅 GOLES", "🏆 MERCADOS 1X2", "🚩 ESPECIALES", "📊 MATRIZ"])
+    
+    # REORDENAMIENTO DE PESTAÑAS Y ADICIÓN DE HANDICAP
+    tab_dc, tab_g, tab_h, tab_spec, tab_m = st.tabs(["🏆 MERCADOS 1X2", "🥅 GOLES", "⚖️ HANDICAP", "🚩 ESPECIALES", "📊 MATRIZ"])
+    
+    with tab_dc:
+        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 Directo", 100-res['DC'][0], color="#d4af37")
+        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 Directo", 100-res['DC'][1], color="#d4af37")
+        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#00ffa3")
+    
     with tab_g:
         ga, gb = st.columns(2)
         with ga:
             for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    with tab_dc:
-        dual_bar_explicit(f"1X ({nl} o Empate)", res['DC'][0], f"2 Directo", 100-res['DC'][0], color="#d4af37")
-        dual_bar_explicit(f"X2 ({nv} o Empate)", res['DC'][1], f"1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#00ffa3")
+    
+    with tab_h:
+        st.markdown(f"<h5 style='color:#d4af37; margin-bottom:20px;'>LÍNEAS DE HANDICAP (Referencia: {nl})</h5>", unsafe_allow_html=True)
+        for h, prob in res['HANDICAP'].items():
+            signo = "+" if h > 0 else ""
+            dual_bar_explicit(f"H. Asiático {signo}{h}", prob, f"H. Rival", 100-prob, color="#00ffa3")
+
     with tab_spec:
         tj_sec, co_sec = st.columns(2)
         with tj_sec:
@@ -279,9 +296,10 @@ if generar:
         with co_sec:
             st.markdown("<h5 style='color:#00ffa3;'>🚩 TIROS DE ESQUINA</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Over {l}", p[0], f"Under {l}", p[1], color="#00ffa3")
+    
     with tab_m:
         fig = px.imshow(pd.DataFrame(res['MATRIZ']), labels=dict(x="Visitante", y="Local", color="%"), x=[str(i) for i in range(6)], y=[str(i) for i in range(6)], color_continuous_scale=['#0a0c10', '#00ffa3', '#d4af37'], text_auto=".1f")
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | NUMPY MONTE CARLO SIMULATION | DIXON-COLES MODEL | OR936 ELITE v3.5 PRO</p>", unsafe_allow_html=True)
+st.markdown("<br><br><p style='text-align: center; color: #444; font-size: 0.7em; letter-spacing: 2px;'>SYSTEM AUTHENTICATED | FUZZY MATCHING ACTIVE | DIXON-COLES MODEL | OR936 ELITE v3.5 PRO</p>", unsafe_allow_html=True)

@@ -4,9 +4,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from datetime import datetime, timedelta, timezone # Control de zona horaria preciso
+from datetime import datetime, timedelta, timezone
 import urllib.parse
 from fuzzywuzzy import process
+import time
 
 # =================================================================
 # CONFIGURACIÓN API & ESTADO
@@ -24,10 +25,15 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-@st.cache_data(ttl=300) 
-def api_request(action, params=None):
+# Función de solicitud con bypass de caché opcional
+def api_request(action, params=None, bypass_cache=False):
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY})
+    
+    # Si queremos forzar datos nuevos, añadimos un timestamp aleatorio que la API ignora pero el caché no
+    if bypass_cache:
+        params.update({"_cache_buster": time.time()})
+        
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         return res.json() if res.status_code == 200 else []
@@ -164,31 +170,30 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # --- AJUSTE MAESTRO DE SINCRONIZACIÓN ---
-    # Obtenemos la fecha actual en El Salvador forzando UTC-6
+    # CONTROL ABSOLUTO DE TIEMPO (UTC-6 El Salvador)
     tz_sv = timezone(timedelta(hours=-6))
-    fecha_hoy_sv = datetime.now(tz_sv).date()
-    # Usamos una clave (key) para asegurar que el widget se refresque correctamente
-    fecha_analisis = st.date_input("📅 Fecha de Análisis", value=fecha_hoy_sv, key='fecha_maestra')
-    # Formateamos la fecha para la API
-    f_api = fecha_analisis.strftime('%Y-%m-%d')
+    fecha_actual_sv = datetime.now(tz_sv).date()
+    
+    # El widget de fecha ahora es la única fuente de verdad
+    fecha_analisis = st.date_input("📅 Fecha de Análisis", value=fecha_actual_sv)
+    str_fecha = fecha_analisis.strftime('%Y-%m-%d')
 
-    # Llamada a la API usando la fecha exacta seleccionada
+    # Consulta de eventos (Sin caché para asegurar que traiga lo seleccionado)
     eventos = api_request("get_events", {
-        "from": f_api, 
-        "to": f_api, 
+        "from": str_fecha, 
+        "to": str_fecha, 
         "league_id": ligas_api[nombre_liga]
-    })
+    }, bypass_cache=True)
 
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 Evento en Vivo", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Eventos Encontrados", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
-            # Forzamos limpieza de caché antes de pedir nuevos datos
+            # Limpieza total para no arrastrar datos de partidos anteriores
             st.cache_data.clear()
-            with st.spinner("Sincronizando..."):
-                standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]})
+            with st.spinner("CALIBRANDO DATOS..."):
+                standings = api_request("get_standings", {"league_id": ligas_api[nombre_liga]}, bypass_cache=True)
                 if standings and isinstance(standings, list):
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
                     a_goals = sum(int(t['away_league_GF']) for t in standings)
@@ -216,12 +221,14 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = float(dv['away_league_GA'])/pj_a if pj_a>0 else 1.3
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
+    else:
+        st.warning("No hay partidos para esta fecha.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + FUZZY LOGIC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO • QUANTUM SYNC</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-from datetime import datetime, timedelta # AJUSTE 1: Importación para manejo de horas
+from datetime import datetime, timedelta
 import urllib.parse
 from fuzzywuzzy import process
 
@@ -24,7 +24,7 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-@st.cache_data(ttl=300) # AJUSTE 2: Cache reducido a 5 min para datos frescos
+@st.cache_data(ttl=300) 
 def api_request(action, params=None):
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY})
@@ -164,9 +164,10 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # AJUSTE 1: Sincronización con horario El Salvador (UTC-6)
-    hora_local = datetime.now() - timedelta(hours=6)
-    fecha_analisis = st.date_input("📅 Fecha", hora_local)
+    # AJUSTE DEFINITIVO: Usar UTC para evitar desfases de servidor local
+    # Sincronización absoluta con El Salvador (UTC-6)
+    hora_el_salvador = datetime.utcnow() - timedelta(hours=6)
+    fecha_analisis = st.date_input("📅 Fecha", hora_el_salvador)
 
     eventos = api_request("get_events", {"from": fecha_analisis.strftime("%Y-%m-%d"), "to": fecha_analisis.strftime("%Y-%m-%d"), "league_id": ligas_api[nombre_liga]})
 
@@ -297,4 +298,4 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="JetBrains Mono", color="#eee", size=12), xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"), yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True) 
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)

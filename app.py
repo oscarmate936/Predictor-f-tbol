@@ -183,26 +183,38 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# INTERFAZ Y SIDEBAR (Actualizado con Ligas Solicitadas)
+# INTERFAZ Y SIDEBAR (Actualizado con Opciones 1 y 2)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     
-    # LIGAS ACTUALIZADAS: 5 Grandes Europa, Brasil y El Salvador
+    # LIGAS ACTUALIZADAS (OPCIÓN 1 Y 2 + ORIGINALES)
     ligas_api = {
+        # --- 5 GRANDES EUROPA ---
         "Premier League (Inglaterra)": 152,
         "La Liga (España)": 302,
         "Serie A (Italia)": 207,
         "Bundesliga (Alemania)": 175,
         "Ligue 1 (Francia)": 168,
+        
+        # --- OPCIÓN 1: COMPETICIONES EUROPEAS ---
         "UEFA Champions League": 3,
         "UEFA Europa League": 4,
+        "UEFA Conference League": 683,
         "Copa Libertadores": 13,
+        
+        # --- OPCIÓN 2: COPAS DOMÉSTICAS ---
+        "FA Cup (Inglaterra)": 145,
+        "EFL Cup (Inglaterra)": 146,
+        "Copa del Rey (España)": 300,
+        "Coppa Italia (Italia)": 209,
+        "DFB Pokal (Alemania)": 177,
+        "Coupe de France (Francia)": 169,
+
+        # --- REGIONALES ---
         "Brasileirão Serie A (Brasil)": 99,
         "Liga Mayor (El Salvador)": 601,
-        "Copa Presidente (El Salvador)": 603,
-        "FA Cup (Inglaterra)": 145,
-        "Copa del Rey (España)": 300
+        "Copa Presidente (El Salvador)": 603
     }
     
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))

@@ -14,10 +14,12 @@ from fuzzywuzzy import process
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
+if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
+if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
+
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
-    'nl_auto': "Local", 'nv_auto': "Visitante", 'lgf_auto': 1.7, 
-    'lgc_auto': 1.2, 'vgf_auto': 1.5, 'vgc_auto': 1.1
+    'lgf_auto': 1.7, 'lgc_auto': 1.2, 'vgf_auto': 1.5, 'vgc_auto': 1.1
 }
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
@@ -100,7 +102,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX 
+# DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -167,7 +169,7 @@ with st.sidebar:
 
     if eventos and isinstance(eventos, list) and "error" not in eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 Evento", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Evento en Vivo", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
             with st.spinner("Sincronizando..."):
@@ -200,23 +202,28 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
 
+# =================================================================
 # CONTENIDO PRINCIPAL
+# =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + FUZZY LOGIC</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
-    st.markdown(f"<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px;'><h2 style='color:var(--secondary); margin:0;'>{st.session_state['nl_auto'].upper()}</h2></div>", unsafe_allow_html=True)
+    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:#666; margin:0;'>EQUIPO LOCAL (EDITABLE)</h6></div>", unsafe_allow_html=True)
+    nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
     la, lb = st.columns(2)
     lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, 2.3), lb.number_input("Corners L", 0.0, 20.0, 5.5)
 
 with col_v:
-    st.markdown(f"<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px;'><h2 style='color:var(--primary); margin:0;'>{st.session_state['nv_auto'].upper()}</h2></div>", unsafe_allow_html=True)
+    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:#666; margin:0;'>EQUIPO VISITANTE (EDITABLE)</h6></div>", unsafe_allow_html=True)
+    nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
     va, vb = st.columns(2)
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
+st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto')
 
 b_ex, b_wa = st.columns([3, 1])
@@ -236,10 +243,10 @@ if generar:
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 65 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
-    msg = f"*OR936 ELITE*\n⚽ {st.session_state['nl_auto']} vs {st.session_state['nv_auto']}\n\n*PICKS:*\n"
+    msg = f"*OR936 ELITE*\n⚽ {nl_manual} vs {nv_manual}\n\n*PICKS:*\n"
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
-    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR</a>', unsafe_allow_html=True)
+    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
@@ -253,7 +260,7 @@ if generar:
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], st.session_state['nl_auto'], "Empate", st.session_state['nv_auto'])
+    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ"])
     with t1:
@@ -264,14 +271,14 @@ if generar:
     with t2:
         ha, hb = st.columns(2)
         with ha:
-            st.markdown(f"<h5 style='color:var(--secondary);'>{st.session_state['nl_auto']}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='color:var(--secondary);'>{nl_manual}</h5>", unsafe_allow_html=True)
             for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
         with hb:
-            st.markdown(f"<h5 style='color:var(--primary);'>{st.session_state['nv_auto']}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='color:var(--primary);'>{nv_manual}</h5>", unsafe_allow_html=True)
             for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
     with t3:
-        dual_bar_explicit(f"1X ({st.session_state['nl_auto']} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({st.session_state['nv_auto']} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
+        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
+        dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
         dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
     with t4:
         ta, co = st.columns(2)
@@ -282,8 +289,26 @@ if generar:
             st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
     with t5:
-        fig = px.imshow(pd.DataFrame(res['MATRIZ']), color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f")
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
+        # MAPA DE CALOR MEJORADO E INTUITIVO
+        df_matriz = pd.DataFrame(res['MATRIZ'], 
+                                 index=[f"{i}" for i in range(6)], 
+                                 columns=[f"{j}" for j in range(6)])
+        
+        fig = px.imshow(df_matriz, 
+                        labels=dict(x=f"Goles {nv_manual}", y=f"Goles {nl_manual}", color="% Prob."),
+                        color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], 
+                        text_auto=".1f",
+                        aspect="equal")
+
+        fig.update_layout(
+            title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            font=dict(family="JetBrains Mono", color="#eee", size=12),
+            xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"),
+            yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"),
+            coloraxis_colorbar=dict(title="%", thickness=15)
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)

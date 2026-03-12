@@ -7,6 +7,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 import urllib.parse
 from fuzzywuzzy import process
+import time
 
 # =================================================================
 # CONFIGURACIÓN API & ESTADO
@@ -14,7 +15,7 @@ from fuzzywuzzy import process
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
 
-# SINCRONIZACIÓN ABSOLUTA EL SALVADOR (UTC-6)
+# Sincronización horaria absoluta para El Salvador (UTC-6)
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
@@ -28,20 +29,20 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# FUNCIÓN LIVE: Sin caché para asegurar que los partidos sean los de HOY
+# Función LIVE (Sin caché y con filtro de seguridad)
 def api_request_live(action, params=None):
     if params is None: params = {}
-    params.update({"action": action, "APIkey": API_KEY})
+    params.update({"action": action, "APIkey": API_KEY, "_ts": time.time()})
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
         return data if isinstance(data, list) else []
     except: return []
 
-# FUNCIÓN CACHED: Solo para standings (Posiciones) para no saturar la API
-@st.cache_data(ttl=600)
-def api_request_cached(action, league_id):
-    params = {"action": action, "APIkey": API_KEY, "league_id": league_id}
+# Función CACHED (Solo para tablas de posiciones)
+@st.cache_data(ttl=300)
+def api_request_cached(league_id):
+    params = {"action": "get_standings", "APIkey": API_KEY, "league_id": league_id}
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
@@ -98,11 +99,9 @@ class MotorMatematico:
 
         total = max(0.0001, p1 + px + p2)
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.0))
-
-        # Montecarlo rápido
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
-        
+
         return {
             "1X2": (p1/total*100, px/total*100, p2/total*100), 
             "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
@@ -178,22 +177,24 @@ with st.sidebar:
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     
-    # Selector de fecha - Sincronizado con El Salvador
-    fecha_hoy = ahora_sv.date()
-    fecha_analisis = st.date_input("📅 FECHA DE JORNADA", value=fecha_hoy)
+    # Calendario sincronizado a El Salvador
+    fecha_analisis = st.date_input("📅 JORNADA", value=ahora_sv.date())
     f_str = fecha_analisis.strftime('%Y-%m-%d')
 
-    # CONSULTA EN TIEMPO REAL SIN CACHÉ
-    eventos = api_request_live("get_events", {"from": f_str, "to": f_str, "league_id": ligas_api[nombre_liga]})
+    # CONSULTA CON FILTRO DE FECHA ESTRICTO
+    raw_events = api_request_live("get_events", {"from": f_str, "to": f_str, "league_id": ligas_api[nombre_liga]})
+    
+    # FILTRO DE SEGURIDAD: Solo partidos que coincidan con la fecha seleccionada
+    eventos = [e for e in raw_events if e.get('match_date') == f_str]
 
-    if eventos and isinstance(eventos, list) and "error" not in eventos:
+    if eventos:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 Eventos Hoy", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Partidos Hoy", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
-            st.cache_data.clear() # Limpia todo para asegurar que los datos sean nuevos
-            with st.spinner("CALIBRANDO..."):
-                standings = api_request_cached("get_standings", ligas_api[nombre_liga])
+            st.cache_data.clear() # Limpia caché de standings
+            with st.spinner("SINCRONIZANDO..."):
+                standings = api_request_cached(ligas_api[nombre_liga])
                 if standings and isinstance(standings, list):
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
                     a_goals = sum(int(t['away_league_GF']) for t in standings)
@@ -221,12 +222,14 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = float(dv['away_league_GA'])/pj_a if pj_a>0 else 1.3
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
+    else:
+        st.info("No hay partidos registrados para esta fecha.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + SYNC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + REAL SYNC</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:

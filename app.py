@@ -10,10 +10,9 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# CONFIGURACIÓN API (AJUSTADA A RAPIDAPI) & ESTADO
+# CONFIGURACIÓN API (RAPIDAPI) & ESTADO
 # =================================================================
-# La clave obtenida de tu imagen
-API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf8f81aec6" 
+API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf8f81aec6"
 BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/"
 HEADERS = {
     "X-RapidAPI-Key": API_KEY,
@@ -34,20 +33,31 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función LIVE ajustada para RapidAPI (Mapping compatible con el resto del código)
+# Función para obtener la temporada correcta (En marzo 2026, ligas europeas son season 2025)
+def get_current_season(league_id):
+    return ahora_sv.year if ahora_sv.month > 6 else ahora_sv.year - 1
+
+# Función LIVE (Ajustada para /fixtures de RapidAPI)
 def api_request_live(action, params=None):
-    # En RapidAPI 'get_events' se traduce al endpoint /fixtures
     endpoint = "fixtures"
+    # Para asegurar que salgan partidos, buscamos en la temporada actual y la anterior si es necesario
+    season = ahora_sv.year
     url_params = {
         "league": params.get("league_id"),
         "from": params.get("from"),
         "to": params.get("to"),
-        "season": 2025 # Ajustado a temporada actual
+        "season": season
     }
     try:
         res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
         data = res.json().get('response', [])
-        # Normalizamos el formato para no romper el resto del código
+        
+        # Si no hay respuesta, intentamos con la temporada anterior (común en ligas europeas en marzo)
+        if not data:
+            url_params["season"] = season - 1
+            res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
+            data = res.json().get('response', [])
+
         normalized = []
         for f in data:
             normalized.append({
@@ -58,17 +68,23 @@ def api_request_live(action, params=None):
         return normalized
     except: return []
 
-# Función CACHED ajustada para RapidAPI
+# Función CACHED (Ajustada para /standings de RapidAPI)
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
     endpoint = "standings"
-    params = {"league": league_id, "season": 2025}
-    try:
+    season = ahora_sv.year
+    
+    def fetch(s):
+        params = {"league": league_id, "season": s}
         res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
-        data = res.json().get('response', [])
-        if not data: return []
-        
-        # Normalizamos el formato de la tabla de posiciones
+        return res.json().get('response', [])
+
+    data = fetch(season)
+    if not data: data = fetch(season - 1)
+    
+    if not data: return []
+    
+    try:
         standings_raw = data[0]['league']['standings'][0]
         normalized = []
         for t in standings_raw:
@@ -87,7 +103,7 @@ def api_request_cached(league_id):
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO ELITE (SIN CAMBIOS)
+# MOTOR MATEMÁTICO ELITE (Sin cambios)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -152,7 +168,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX (SIN CAMBIOS)
+# DISEÑO UI/UX (Sin cambios)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -201,19 +217,27 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR (IDs DE LIGAS ACTUALIZADOS PARA API-FOOTBALL)
+# SIDEBAR (IDs ACTUALIZADOS PARA RAPIDAPI)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Premier League (Inglaterra)": 39, "La Liga (España)": 140, "Serie A (Italia)": 135, 
-        "Bundesliga (Alemania)": 78, "Ligue 1 (Francia)": 61, "Saudi Pro League": 307,
-        "UEFA Champions League": 2, "UEFA Europa League": 3, "UEFA Conference League": 848,
-        "Brasileirão (Série A)": 71, "Liga Mayor (El Salvador)": 242, "Trendyol Süper Lig": 203
+        "Premier League (Inglaterra)": 39, 
+        "La Liga (España)": 140, 
+        "Serie A (Italia)": 135, 
+        "Bundesliga (Alemania)": 78, 
+        "Ligue 1 (Francia)": 61, 
+        "UEFA Champions League": 2, 
+        "UEFA Europa League": 3,
+        "Brasileirão Série A": 71,
+        "Liga Mayor (El Salvador)": 242,
+        "Saudi Pro League": 307,
+        "Trendyol Süper Lig": 203
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
 
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
+
     f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
     f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
@@ -255,10 +279,10 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
     else:
-        st.warning("No se hallaron partidos. Verifica la fecha o el ID de liga.")
+        st.warning("No se hallaron partidos. Intenta mover la fecha o verifica tu suscripción en RapidAPI.")
 
 # =================================================================
-# CONTENIDO PRINCIPAL (SIN CAMBIOS)
+# CONTENIDO PRINCIPAL (Sin cambios)
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + REAL SYNC</p>", unsafe_allow_html=True)

@@ -318,4 +318,4 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="JetBrains Mono", color="#eee", size=12), xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"), yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True) 

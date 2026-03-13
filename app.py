@@ -10,7 +10,7 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# CONFIGURACIÓN API & ESTADO (MIGRADO A API-FOOTBALL / API-SPORTS)
+# CONFIGURACIÓN API & ESTADO (CORREGIDO PARA 2026)
 # =================================================================
 API_KEY = "d204f521c34c588126431338b7a80826"
 BASE_URL = "https://v3.football.api-sports.io/"
@@ -23,6 +23,10 @@ HEADERS = {
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
+# Determinar temporada actual (En 2026, las ligas invernales son 2025 y las de verano 2026)
+# Usamos 2025 como base para ligas top en marzo.
+SEASON_ACTUAL = ahora_sv.year - 1 if ahora_sv.month < 7 else ahora_sv.year
+
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 
@@ -33,7 +37,6 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función LIVE (Migrada a endpoint /fixtures)
 def api_request_live(endpoint, params=None):
     try:
         res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
@@ -41,21 +44,19 @@ def api_request_live(endpoint, params=None):
         return data.get('response', [])
     except: return []
 
-# Función CACHED (Migrada a endpoint /standings)
 @st.cache_data(ttl=300)
-def api_request_cached(league_id, season=2025):
+def api_request_cached(league_id, season):
     params = {"league": league_id, "season": season}
     try:
         res = requests.get(f"{BASE_URL}standings", headers=HEADERS, params=params, timeout=10)
         data = res.json()
-        # API-Sports anida standings en league -> standings -> [0]
-        if data.get('response'):
+        if data.get('response') and len(data['response']) > 0:
             return data['response'][0]['league']['standings'][0]
         return []
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO ELITE (SIN CAMBIOS)
+# MOTOR MATEMÁTICO ELITE (IDENTICO)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -120,7 +121,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX (SIN CAMBIOS)
+# DISEÑO UI/UX (IDENTICO)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -169,52 +170,51 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR (ACTUALIZADA CON IDs DE API-FOOTBALL)
+# SIDEBAR (CORREGIDA BÚSQUEDA)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
-    # IDs actualizados para API-FOOTBALL (v3)
     ligas_api = {
         "Premier League (Inglaterra)": 39, "La Liga (España)": 140, "Serie A (Italia)": 135, 
         "Bundesliga (Alemania)": 78, "Ligue 1 (Francia)": 61, "Saudi Pro League": 307, 
         "Trendyol Süper Lig": 203, "Liga Mayor (El Salvador)": 232, "UEFA Champions League": 2, 
         "UEFA Europa League": 3, "UEFA Conference League": 848, "Copa Libertadores": 13,
-        "Brasileirão (Série A)": 71, "Brasileirão Série B": 72, "Copa de Brasil": 73
+        "Brasileirão (Série A)": 71, "Brasileirão Série B": 72
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
+    
+    # Selector de Temporada por si la liga es de año natural (ej. Brasil) o invernal (ej. España)
+    anio_sel = st.selectbox("📅 Temporada", [SEASON_ACTUAL, SEASON_ACTUAL + 1], index=0)
 
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
     
-    f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
-    f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
+    f_desde = (fecha_analisis - timedelta(days=2)).strftime('%Y-%m-%d')
+    f_hasta = (fecha_analisis + timedelta(days=5)).strftime('%Y-%m-%d')
 
-    raw_events = api_request_live("fixtures", {"from": f_desde, "to": f_hasta, "league": ligas_api[nombre_liga], "season": 2024 if ahora_sv.month < 6 else 2025})
+    # Buscamos fixtures con la temporada seleccionada
+    raw_events = api_request_live("fixtures", {"from": f_desde, "to": f_hasta, "league": ligas_api[nombre_liga], "season": anio_sel})
 
     if raw_events:
-        op_p = {f"({e['fixture']['date'][:10]}) {e['teams']['home']['name']} vs {e['teams']['away']['name']}": e for e in raw_events}
+        op_p = {f"({e['fixture']['date'][5:10]}) {e['teams']['home']['name']} vs {e['teams']['away']['name']}": e for e in raw_events}
         p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
             st.cache_data.clear()
             with st.spinner("SINCRONIZANDO..."):
                 current_match = op_p[p_sel]
-                standings = api_request_cached(ligas_api[nombre_liga])
+                standings = api_request_cached(ligas_api[nombre_liga], anio_sel)
                 
                 if standings:
                     h_goals = sum(int(t['all']['goals']['for']) for t in standings)
-                    a_goals = sum(int(t['all']['goals']['against']) for t in standings) # En ligas es simétrico
                     total_pj = sum(int(t['all']['played']) for t in standings)
 
                     st.session_state['p_liga_auto'] = float((h_goals * 2) / total_pj) if total_pj > 0 else 2.5
-                    st.session_state['hfa_league'] = 1.10 # Factor estándar localía
+                    st.session_state['hfa_league'] = 1.05 
 
                     def buscar(n):
                         nombres_equipos = [t['team']['name'] for t in standings]
                         match, score = process.extractOne(n, nombres_equipos)
-                        if score > 60:
-                            for t in standings:
-                                if t['team']['name'] == match: return t
-                        return None
+                        return next((t for t in standings if t['team']['name'] == match), None) if score > 60 else None
 
                     dl = buscar(current_match['teams']['home']['name'])
                     dv = buscar(current_match['teams']['away']['name'])
@@ -228,12 +228,15 @@ with st.sidebar:
                         st.session_state['vgf_auto'] = float(dv['away']['goals']['for'])/pj_a if pj_a>0 else 1.2
                         st.session_state['vgc_auto'] = float(dv['away']['goals']['against'])/pj_a if pj_a>0 else 1.3
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team']['name'], dv['team']['name']
+                        st.success("DATOS SINCRONIZADOS")
                         st.rerun()
+                else:
+                    st.error("No hay tabla de posiciones disponible para esta temporada.")
     else:
-        st.warning("No se hallaron partidos. Verifica la fecha o la liga.")
+        st.warning("No se hallaron partidos. Intenta cambiar el año de la Temporada o la fecha.")
 
 # =================================================================
-# CONTENIDO PRINCIPAL (RESTO DEL CÓDIGO IDÉNTICO)
+# CONTENIDO PRINCIPAL (IDENTICO)
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + REAL SYNC</p>", unsafe_allow_html=True)
@@ -254,7 +257,7 @@ with col_v:
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, 2.2), vb.number_input("Corners V", 0.0, 20.0, 4.8)
 
 st.markdown("<br>", unsafe_allow_html=True)
-p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto_slider', value=st.session_state['p_liga_auto'])
+p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, value=st.session_state['p_liga_auto'])
 
 b_ex, b_wa = st.columns([3, 1])
 with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")

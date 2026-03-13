@@ -12,6 +12,7 @@ import time
 # =================================================================
 # CONFIGURACIÓN API (RAPIDAPI) & ESTADO
 # =================================================================
+# Clave extraída de tu solicitud
 API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf8f81aec6"
 BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/"
 HEADERS = {
@@ -33,28 +34,35 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función para obtener la temporada correcta (En marzo 2026, ligas europeas son season 2025)
-def get_current_season(league_id):
-    return ahora_sv.year if ahora_sv.month > 6 else ahora_sv.year - 1
+# Función para determinar la temporada (Season)
+# En marzo de 2026, las ligas europeas son temporada 2025.
+def get_season(league_id):
+    # Ligas que suelen ir por año calendario (2026)
+    ligas_anuales = [71, 242, 253] # Brasil, El Salvador, MLS
+    if league_id in ligas_anuales:
+        return ahora_sv.year
+    return ahora_sv.year - 1 if ahora_sv.month < 7 else ahora_sv.year
 
-# Función LIVE (Ajustada para /fixtures de RapidAPI)
+# Función LIVE (Estructura RapidAPI)
 def api_request_live(action, params=None):
     endpoint = "fixtures"
-    # Para asegurar que salgan partidos, buscamos en la temporada actual y la anterior si es necesario
-    season = ahora_sv.year
+    league_id = params.get("league_id")
+    season = get_season(league_id)
+    
     url_params = {
-        "league": params.get("league_id"),
+        "league": league_id,
+        "season": season,
         "from": params.get("from"),
-        "to": params.get("to"),
-        "season": season
+        "to": params.get("to")
     }
+    
     try:
         res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
         data = res.json().get('response', [])
         
-        # Si no hay respuesta, intentamos con la temporada anterior (común en ligas europeas en marzo)
+        # Si no hay partidos, intentar con la temporada siguiente por si acaso
         if not data:
-            url_params["season"] = season - 1
+            url_params["season"] = season + 1
             res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
             data = res.json().get('response', [])
 
@@ -68,23 +76,26 @@ def api_request_live(action, params=None):
         return normalized
     except: return []
 
-# Función CACHED (Ajustada para /standings de RapidAPI)
+# Función CACHED (Estructura RapidAPI)
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
     endpoint = "standings"
-    season = ahora_sv.year
-    
-    def fetch(s):
-        params = {"league": league_id, "season": s}
-        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
-        return res.json().get('response', [])
-
-    data = fetch(season)
-    if not data: data = fetch(season - 1)
-    
-    if not data: return []
+    season = get_season(league_id)
     
     try:
+        params = {"league": league_id, "season": season}
+        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
+        data = res.json().get('response', [])
+        
+        # Reintento si está vacío
+        if not data:
+            params["season"] = season + 1
+            res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
+            data = res.json().get('response', [])
+
+        if not data: return []
+        
+        # Navegación profunda en el JSON de API-Football
         standings_raw = data[0]['league']['standings'][0]
         normalized = []
         for t in standings_raw:
@@ -221,6 +232,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
+    # IDs confirmados para API-Football v3
     ligas_api = {
         "Premier League (Inglaterra)": 39, 
         "La Liga (España)": 140, 
@@ -228,16 +240,13 @@ with st.sidebar:
         "Bundesliga (Alemania)": 78, 
         "Ligue 1 (Francia)": 61, 
         "UEFA Champions League": 2, 
-        "UEFA Europa League": 3,
         "Brasileirão Série A": 71,
         "Liga Mayor (El Salvador)": 242,
-        "Saudi Pro League": 307,
-        "Trendyol Süper Lig": 203
+        "Saudi Pro League": 307
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
 
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
-
     f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
     f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
@@ -278,8 +287,10 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = float(dv['away_league_GA'])/pj_a if pj_a>0 else 1.3
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
+                else:
+                    st.error("No se pudieron obtener las tablas de posiciones.")
     else:
-        st.warning("No se hallaron partidos. Intenta mover la fecha o verifica tu suscripción en RapidAPI.")
+        st.warning("No se hallaron partidos. Prueba cambiando la fecha en el calendario.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL (Sin cambios)

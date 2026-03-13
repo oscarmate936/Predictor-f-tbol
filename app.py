@@ -10,10 +10,15 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# CONFIGURACIÓN API & ESTADO
+# CONFIGURACIÓN API (AJUSTADA A RAPIDAPI) & ESTADO
 # =================================================================
-API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
-BASE_URL = "https://apiv3.apifootball.com/"
+# La clave obtenida de tu imagen
+API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf8f81aec6" 
+BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/"
+HEADERS = {
+    "X-RapidAPI-Key": API_KEY,
+    "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
+}
 
 # Sincronización horaria absoluta para El Salvador (UTC-6)
 tz_sv = timezone(timedelta(hours=-6))
@@ -29,28 +34,60 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función LIVE (Sin caché y con filtro de seguridad)
+# Función LIVE ajustada para RapidAPI (Mapping compatible con el resto del código)
 def api_request_live(action, params=None):
-    if params is None: params = {}
-    params.update({"action": action, "APIkey": API_KEY, "_ts": time.time()})
+    # En RapidAPI 'get_events' se traduce al endpoint /fixtures
+    endpoint = "fixtures"
+    url_params = {
+        "league": params.get("league_id"),
+        "from": params.get("from"),
+        "to": params.get("to"),
+        "season": 2025 # Ajustado a temporada actual
+    }
     try:
-        res = requests.get(BASE_URL, params=params, timeout=10)
-        data = res.json()
-        return data if isinstance(data, list) else []
+        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
+        data = res.json().get('response', [])
+        # Normalizamos el formato para no romper el resto del código
+        normalized = []
+        for f in data:
+            normalized.append({
+                'match_date': f['fixture']['date'][:10],
+                'match_hometeam_name': f['teams']['home']['name'],
+                'match_awayteam_name': f['teams']['away']['name']
+            })
+        return normalized
     except: return []
 
-# Función CACHED (Solo para tablas de posiciones)
+# Función CACHED ajustada para RapidAPI
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
-    params = {"action": "get_standings", "APIkey": API_KEY, "league_id": league_id}
+    endpoint = "standings"
+    params = {"league": league_id, "season": 2025}
     try:
-        res = requests.get(BASE_URL, params=params, timeout=10)
-        data = res.json()
-        return data if isinstance(data, list) else []
+        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
+        data = res.json().get('response', [])
+        if not data: return []
+        
+        # Normalizamos el formato de la tabla de posiciones
+        standings_raw = data[0]['league']['standings'][0]
+        normalized = []
+        for t in standings_raw:
+            normalized.append({
+                'team_name': t['team']['name'],
+                'overall_league_position': t['rank'],
+                'overall_league_payed': t['all']['played'],
+                'home_league_payed': t['home']['played'],
+                'home_league_GF': t['home']['goals']['for'],
+                'home_league_GA': t['home']['goals']['against'],
+                'away_league_payed': t['away']['played'],
+                'away_league_GF': t['away']['goals']['for'],
+                'away_league_GA': t['away']['goals']['against']
+            })
+        return normalized
     except: return []
 
 # =================================================================
-# MOTOR MATEMÁTICO ELITE
+# MOTOR MATEMÁTICO ELITE (SIN CAMBIOS)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -115,7 +152,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# DISEÑO UI/UX
+# DISEÑO UI/UX (SIN CAMBIOS)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -164,22 +201,19 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR
+# SIDEBAR (IDs DE LIGAS ACTUALIZADOS PARA API-FOOTBALL)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
-        "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
-        "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
-        "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
-        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169
+        "Premier League (Inglaterra)": 39, "La Liga (España)": 140, "Serie A (Italia)": 135, 
+        "Bundesliga (Alemania)": 78, "Ligue 1 (Francia)": 61, "Saudi Pro League": 307,
+        "UEFA Champions League": 2, "UEFA Europa League": 3, "UEFA Conference League": 848,
+        "Brasileirão (Série A)": 71, "Liga Mayor (El Salvador)": 242, "Trendyol Süper Lig": 203
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
 
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
-    
-    # RANGO DE BÚSQUEDA DINÁMICO (+/- 3 días) para encontrar partidos en ligas con menos frecuencia
     f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
     f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
@@ -193,7 +227,7 @@ with st.sidebar:
             st.cache_data.clear()
             with st.spinner("SINCRONIZANDO..."):
                 standings = api_request_cached(ligas_api[nombre_liga])
-                if standings and isinstance(standings, list):
+                if standings:
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
                     a_goals = sum(int(t['away_league_GF']) for t in standings)
                     total_pj = sum(int(t['overall_league_payed']) for t in standings)
@@ -221,10 +255,10 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
     else:
-        st.warning("No se hallaron partidos en esta semana para esta liga. Intenta cambiar la fecha o verifica tu plan de API.")
+        st.warning("No se hallaron partidos. Verifica la fecha o el ID de liga.")
 
 # =================================================================
-# CONTENIDO PRINCIPAL
+# CONTENIDO PRINCIPAL (SIN CAMBIOS)
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V3.5 PRO + REAL SYNC</p>", unsafe_allow_html=True)

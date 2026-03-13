@@ -12,7 +12,7 @@ import time
 # =================================================================
 # CONFIGURACIÓN API (RAPIDAPI) & ESTADO
 # =================================================================
-# Clave extraída de tu solicitud
+# Clave extraída de tu imagen
 API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf8f81aec6"
 BASE_URL = "https://api-football-v1.p.rapidapi.com/v3/"
 HEADERS = {
@@ -34,84 +34,68 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
-# Función para determinar la temporada (Season)
-# En marzo de 2026, las ligas europeas son temporada 2025.
-def get_season(league_id):
-    # Ligas que suelen ir por año calendario (2026)
-    ligas_anuales = [71, 242, 253] # Brasil, El Salvador, MLS
-    if league_id in ligas_anuales:
-        return ahora_sv.year
-    return ahora_sv.year - 1 if ahora_sv.month < 7 else ahora_sv.year
-
-# Función LIVE (Estructura RapidAPI)
+# Función para obtener eventos (Fixtures) con reintento de temporada
 def api_request_live(action, params=None):
     endpoint = "fixtures"
     league_id = params.get("league_id")
-    season = get_season(league_id)
-    
-    url_params = {
-        "league": league_id,
-        "season": season,
-        "from": params.get("from"),
-        "to": params.get("to")
-    }
-    
-    try:
-        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
-        data = res.json().get('response', [])
-        
-        # Si no hay partidos, intentar con la temporada siguiente por si acaso
-        if not data:
-            url_params["season"] = season + 1
+    # Probamos primero con 2025 (temporada europea activa en marzo 2026)
+    for season in [2025, 2026]:
+        url_params = {
+            "league": league_id,
+            "season": season,
+            "from": params.get("from"),
+            "to": params.get("to")
+        }
+        try:
             res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=url_params, timeout=10)
-            data = res.json().get('response', [])
+            data_json = res.json()
+            # Si hay errores de suscripción o key, los mostramos
+            if data_json.get("errors"):
+                st.error(f"Error API: {data_json['errors']}")
+                return []
+            
+            resp = data_json.get('response', [])
+            if resp:
+                normalized = []
+                for f in resp:
+                    normalized.append({
+                        'match_date': f['fixture']['date'][:10],
+                        'match_hometeam_name': f['teams']['home']['name'],
+                        'match_awayteam_name': f['teams']['away']['name']
+                    })
+                return normalized
+        except: continue
+    return []
 
-        normalized = []
-        for f in data:
-            normalized.append({
-                'match_date': f['fixture']['date'][:10],
-                'match_hometeam_name': f['teams']['home']['name'],
-                'match_awayteam_name': f['teams']['away']['name']
-            })
-        return normalized
-    except: return []
-
-# Función CACHED (Estructura RapidAPI)
-@st.cache_data(ttl=300)
+# Función para obtener posiciones (Standings)
+@st.cache_data(ttl=600)
 def api_request_cached(league_id):
     endpoint = "standings"
-    season = get_season(league_id)
-    
-    try:
+    for season in [2025, 2026]:
         params = {"league": league_id, "season": season}
-        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
-        data = res.json().get('response', [])
-        
-        # Reintento si está vacío
-        if not data:
-            params["season"] = season + 1
+        try:
             res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params, timeout=10)
-            data = res.json().get('response', [])
-
-        if not data: return []
-        
-        # Navegación profunda en el JSON de API-Football
-        standings_raw = data[0]['league']['standings'][0]
-        normalized = []
-        for t in standings_raw:
-            normalized.append({
-                'team_name': t['team']['name'],
-                'overall_league_position': t['rank'],
-                'overall_league_payed': t['all']['played'],
-                'home_league_payed': t['home']['played'],
-                'home_league_GF': t['home']['goals']['for'],
-                'home_league_GA': t['home']['goals']['against'],
-                'away_league_payed': t['away']['played'],
-                'away_league_GF': t['away']['goals']['for'],
-                'away_league_GA': t['away']['goals']['against']
-            })
-        return normalized
-    except: return []
+            data_json = res.json()
+            resp = data_json.get('response', [])
+            if resp:
+                # Estructura de API-Football: response[0] -> league -> standings[0]
+                standings_raw = resp[0]['league']['standings'][0]
+                normalized = []
+                for t in standings_raw:
+                    normalized.append({
+                        'team_name': t['team']['name'],
+                        'overall_league_position': t['rank'],
+                        'overall_league_payed': t['all']['played'],
+                        'home_league_payed': t['home']['played'],
+                        'home_league_GF': t['home']['goals']['for'],
+                        'home_league_GA': t['home']['goals']['against'],
+                        'away_league_payed': t['away']['played'],
+                        'away_league_GF': t['away']['goals']['for'],
+                        'away_league_GA': t['away']['goals']['against']
+                    })
+                return normalized
+        except: continue
+    return []
 
 # =================================================================
 # MOTOR MATEMÁTICO ELITE (Sin cambios)
@@ -228,21 +212,14 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# SIDEBAR (IDs ACTUALIZADOS PARA RAPIDAPI)
+# SIDEBAR (IDs VERIFICADOS PARA RAPIDAPI)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
-    # IDs confirmados para API-Football v3
     ligas_api = {
-        "Premier League (Inglaterra)": 39, 
-        "La Liga (España)": 140, 
-        "Serie A (Italia)": 135, 
-        "Bundesliga (Alemania)": 78, 
-        "Ligue 1 (Francia)": 61, 
-        "UEFA Champions League": 2, 
-        "Brasileirão Série A": 71,
-        "Liga Mayor (El Salvador)": 242,
-        "Saudi Pro League": 307
+        "Premier League (Inglaterra)": 39, "La Liga (España)": 140, "Serie A (Italia)": 135, 
+        "Bundesliga (Alemania)": 78, "Ligue 1 (Francia)": 61, "UEFA Champions League": 2, 
+        "Brasileirão Série A": 71, "Liga Mayor (El Salvador)": 242, "Saudi Pro League": 307
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
 
@@ -250,6 +227,7 @@ with st.sidebar:
     f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
     f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
+    # Llamada a eventos
     raw_events = api_request_live("get_events", {"from": f_desde, "to": f_hasta, "league_id": ligas_api[nombre_liga]})
 
     if raw_events:
@@ -288,9 +266,9 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
                 else:
-                    st.error("No se pudieron obtener las tablas de posiciones.")
+                    st.error("Error: No se encontró la tabla de posiciones. Verifica la temporada en la API.")
     else:
-        st.warning("No se hallaron partidos. Prueba cambiando la fecha en el calendario.")
+        st.warning("No se hallaron partidos. Intenta mover la fecha o verifica tu suscripción en RapidAPI.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL (Sin cambios)

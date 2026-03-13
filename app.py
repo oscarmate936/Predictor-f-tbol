@@ -173,17 +173,18 @@ with st.sidebar:
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
         "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
         "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169,
-        "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603
+        "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
+        "Trendyol Süper Lig": 322, "Saudi Pro League": 307
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
-    
+
     # Calendario sincronizado a El Salvador
     fecha_analisis = st.date_input("📅 JORNADA", value=ahora_sv.date())
     f_str = fecha_analisis.strftime('%Y-%m-%d')
 
     # CONSULTA CON FILTRO DE FECHA ESTRICTO
     raw_events = api_request_live("get_events", {"from": f_str, "to": f_str, "league_id": ligas_api[nombre_liga]})
-    
+
     # FILTRO DE SEGURIDAD: Solo partidos que coincidan con la fecha seleccionada
     eventos = [e for e in raw_events if e.get('match_date') == f_str]
 

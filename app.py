@@ -258,3 +258,4 @@ if st.button("GENERAR REPORTE QUANTUM"):
     # Botón compartir
     msg = f"*REPORTE ELITE: {nl} vs {nv}*\nTop Pick: {sorted(picks, key=lambda x: x[1], reverse=True)[0][0]} ({sorted(picks, key=lambda x: x[1], reverse=True)[0][1]:.1f}%)\nMarcador: {res['TOP'][0][0]}"
     st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(msg)}" target="_blank" class="whatsapp-btn">📲 COMPARTIR EN WHATSAPP</a>', unsafe_allow_html=True)
+ 

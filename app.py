@@ -169,31 +169,28 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
+        "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
         "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
-        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169,
-        "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
-        "Trendyol Süper Lig": 322, "Saudi Pro League": 307
+        "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
+        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
 
-    # Calendario sincronizado a El Salvador
-    fecha_analisis = st.date_input("📅 JORNADA", value=ahora_sv.date())
-    f_str = fecha_analisis.strftime('%Y-%m-%d')
+    fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
+    
+    # RANGO DE BÚSQUEDA DINÁMICO (+/- 3 días) para encontrar partidos en ligas con menos frecuencia
+    f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
+    f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
-    # CONSULTA CON FILTRO DE FECHA ESTRICTO
-    raw_events = api_request_live("get_events", {"from": f_str, "to": f_str, "league_id": ligas_api[nombre_liga]})
+    raw_events = api_request_live("get_events", {"from": f_desde, "to": f_hasta, "league_id": ligas_api[nombre_liga]})
 
-    # FILTRO DE SEGURIDAD: Solo partidos que coincidan con la fecha seleccionada
-    eventos = [e for e in raw_events if e.get('match_date') == f_str]
-
-    if eventos:
-        op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in eventos}
-        p_sel = st.selectbox("📍 Partidos Hoy", list(op_p.keys()))
+    if raw_events:
+        op_p = {f"({e['match_date']}) {e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in raw_events}
+        p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
-            st.cache_data.clear() # Limpia caché de standings
+            st.cache_data.clear()
             with st.spinner("SINCRONIZANDO..."):
                 standings = api_request_cached(ligas_api[nombre_liga])
                 if standings and isinstance(standings, list):
@@ -224,7 +221,7 @@ with st.sidebar:
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
     else:
-        st.info("No hay partidos registrados para esta fecha.")
+        st.warning("No se hallaron partidos en esta semana para esta liga. Intenta cambiar la fecha o verifica tu plan de API.")
 
 # =================================================================
 # CONTENIDO PRINCIPAL
@@ -318,4 +315,4 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD DE MARCADOR", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="JetBrains Mono", color="#eee", size=12), xaxis=dict(side="bottom", title=f"GOLES VISITANTE ({nv_manual})", gridcolor="#222"), yaxis=dict(title=f"GOLES LOCAL ({nl_manual})", gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True) 
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | FUZZY SEARCH ENABLED | OR936 ELITE v3.5</p>", unsafe_allow_html=True)

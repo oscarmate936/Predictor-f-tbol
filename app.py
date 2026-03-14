@@ -18,11 +18,13 @@ BASE_URL = "https://apiv3.apifootball.com/"
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
+# Inicialización de estados (Incluyendo el nuevo historial)
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
 if 'h2h_bias' not in st.session_state: st.session_state['h2h_bias'] = (1.0, 1.0)
 if 'audit_results' not in st.session_state: st.session_state['audit_results'] = []
+if 'historial_analisis' not in st.session_state: st.session_state['historial_analisis'] = []
 
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
@@ -33,7 +35,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (DEFINIDAS AL PRINCIPIO)
+# 2. FUNCIONES DE LÓGICA ELITE
 # =================================================================
 
 def api_request_live(action, params=None):
@@ -61,7 +63,7 @@ def get_advanced_metrics(team_id, league_id, position):
     if not events or not isinstance(events, list): return 1.0, 1.0
     finished = [e for e in events if e['match_status'] == 'Finished']
     if not finished: return 1.0, 1.0
-    
+
     momentum_gf = 0
     weights = [0.5, 0.3, 0.2]
     for i, m in enumerate(finished[-3:][::-1]):
@@ -70,7 +72,7 @@ def get_advanced_metrics(team_id, league_id, position):
             gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
             momentum_gf += gf * weights[i]
         except: continue
-    
+
     elo_strength = 1.15 if int(position) <= 4 else (1.05 if int(position) <= 8 else 0.95)
     return elo_strength, momentum_gf
 
@@ -97,13 +99,11 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5 + CALIBRACIÓN)
+# 3. MOTOR MATEMÁTICO QUANTUM
 # =================================================================
 
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        # Calibración de incertidumbre basada en la media de goles
-        # A mayor desviación de la media, mayor es el factor de ajuste
         self.rho = -0.16 if league_avg < 2.4 else -0.12
 
     def poisson_prob(self, k, lam):
@@ -143,7 +143,6 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
 
         total = max(0.0001, p1 + px + p2)
-        # Ajuste de Brier: Calibra la confianza según la paridad de XG
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
@@ -161,7 +160,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (ESTILOS)
+# 4. DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -237,7 +236,6 @@ with st.sidebar:
             with st.spinner("QUANTUM DEEP SYNC..."):
                 standings = api_request_cached(ligas_api[nombre_liga])
                 match_info = op_p[p_sel]
-                
                 if standings:
                     h_goals = sum(int(t['home_league_GF']) for t in standings)
                     a_goals = sum(int(t['away_league_GF']) for t in standings)
@@ -252,7 +250,6 @@ with st.sidebar:
                         return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
 
                     dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
-                    
                     if dl and dv:
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
                         elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
@@ -264,8 +261,6 @@ with st.sidebar:
                         st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
                         st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                        
-                        # Capturar auditoría (últimos 5 terminados de la liga)
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
                         st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]
                         st.rerun()
@@ -311,6 +306,17 @@ if generar:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+    
+    # GUARDAR EN HISTORIAL (Evitando duplicados del mismo partido)
+    nuevo_registro = {
+        "fecha": ahora_sv.strftime("%H:%M"),
+        "partido": f"{nl_manual} vs {nv_manual}",
+        "pick": sug[0]['t'],
+        "prob": sug[0]['p']
+    }
+    if not any(d['partido'] == nuevo_registro['partido'] for d in st.session_state['historial_analisis']):
+        st.session_state['historial_analisis'].append(nuevo_registro)
+
     msg = f"*OR936 QUANTUM ELITE*\n⚽ {nl_manual} vs {nv_manual}\n\n*PICKS:*\n"
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
@@ -327,8 +333,8 @@ if generar:
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
-    
-    t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
+
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA", "📚 PARLAY"])
     with t1:
         ga, gb = st.columns(2); 
         with ga:
@@ -368,5 +374,21 @@ if generar:
                 <b>{m['match_hometeam_name']} {m['match_hometeam_score']} - {m['match_awayteam_score']} {m['match_awayteam_name']}</b>
                 </div>""", unsafe_allow_html=True)
         else: st.info("Sincroniza datos para ver la auditoría de la liga.")
+    with t7:
+        st.markdown("<h4 style='color:var(--primary);'>📚 HISTORIAL & PARLAY SUGERIDO</h4>", unsafe_allow_html=True)
+        if not st.session_state['historial_analisis']:
+            st.info("Analiza partidos para construir tu parlay.")
+        else:
+            p_final = 1.0
+            st.markdown('<div class="master-card">', unsafe_allow_html=True)
+            for h in st.session_state['historial_analisis']:
+                st.markdown(f"✅ **{h['partido']}** → {h['pick']} <span style='color:var(--secondary);'>({h['prob']:.1f}%)</span>", unsafe_allow_html=True)
+                p_final *= (h['prob'] / 100)
+            st.markdown("---")
+            st.metric("PROBABILIDAD TOTAL DEL PARLAY", f"{p_final*100:.1f}%")
+            if st.button("LIMPIAR HISTORIAL"):
+                st.session_state['historial_analisis'] = []
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MOMENTUM WEIGHTING | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

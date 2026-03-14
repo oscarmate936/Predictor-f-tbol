@@ -20,8 +20,8 @@ ahora_sv = datetime.now(tz_sv)
 
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
+if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
 if 'h2h_bias' not in st.session_state: st.session_state['h2h_bias'] = (1.0, 1.0)
-if 'market_odds' not in st.session_state: st.session_state['market_odds'] = (2.0, 3.2, 3.0)
 
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
@@ -54,13 +54,37 @@ def api_request_cached(league_id):
     except: return []
 
 @st.cache_data(ttl=300)
+def get_advanced_metrics(team_id, league_id, position):
+    """Calcula Elo Rating simplificado y Momentum (Time Decay)"""
+    events = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=45)).strftime('%Y-%m-%d'), 
+                                             "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
+    if not events or not isinstance(events, list): return 1.0, 1.0
+    
+    finished = [e for e in events if e['match_status'] == 'Finished']
+    if not finished: return 1.0, 1.0
+    
+    # 1. Momentum (Últimos 3 partidos pesan más)
+    momentum_gf = 0
+    weights = [0.5, 0.3, 0.2] # Del más reciente al más antiguo
+    for i, m in enumerate(finished[-3:][::-1]):
+        is_home = m['match_hometeam_id'] == team_id
+        gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
+        momentum_gf += gf * weights[i]
+        
+    # 2. Elo Strength (Ajuste por posición)
+    # Si estás en el top 5, tu rating de fuerza es mayor
+    elo_strength = 1.15 if int(position) <= 4 else (1.05 if int(position) <= 8 else 0.95)
+    
+    return elo_strength, momentum_gf
+
+@st.cache_data(ttl=300)
 def get_h2h_data(team_id_l, team_id_v):
     res = api_request_live("get_H2H", {"firstTeamId": team_id_l, "secondTeamId": team_id_v})
     if not res or 'firstTeam' not in res: return 1.0, 1.0
     matches = res.get('firstTeam', []) + res.get('secondTeam', [])
     if not matches: return 1.0, 1.0
     l_pts, v_pts = 0, 0
-    for m in matches[:8]: # Ampliado a 8 para más contexto
+    for m in matches[:6]:
         try:
             h_s, a_s = int(m.get('match_hometeam_score', 0)), int(m.get('match_awayteam_score', 0))
             if h_s > a_s:
@@ -73,30 +97,15 @@ def get_h2h_data(team_id_l, team_id_v):
                 l_pts += 1; v_pts += 1
         except: continue
     total = l_pts + v_pts if (l_pts + v_pts) > 0 else 1
-    # Ajuste Bayesiano de dominancia
-    bias_l = 0.9 + (l_pts / total * 0.2)
-    bias_v = 0.9 + (v_pts / total * 0.2)
-    return bias_l, bias_v
-
-@st.cache_data(ttl=300)
-def get_efficiency_factor(team_id, league_id):
-    """Calcula si el equipo ha tenido suerte o es realmente eficiente"""
-    events = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=30)).strftime('%Y-%m-%d'), 
-                                             "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
-    if not events or not isinstance(events, list): return 1.0
-    # Lógica de regresión a la media: si ganan siempre por 1 gol, el factor es estable.
-    return 1.02 
+    return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V3)
+# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
 # =================================================================
 
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        # RHO DINÁMICO: Ajusta la probabilidad de empates según la liga
-        if league_avg < 2.3: self.rho = -0.18 # Ligas Under
-        elif league_avg > 2.9: self.rho = -0.08 # Ligas Over
-        else: self.rho = -0.14
+        self.rho = -0.16 if league_avg < 2.4 else -0.12
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
@@ -112,11 +121,9 @@ class MotorMatematico:
     def procesar(self, xg_l, xg_v, tj_total, co_total):
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
-        g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
-        h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
+        g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]; h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
         g_probs = {t: [0.0, 0.0] for t in g_lines}
-        h_probs_l = {h: 0.0 for h in h_lines}
-        h_probs_v = {h: 0.0 for h in h_lines}
+        h_probs_l = {h: 0.0 for h in h_lines}; h_probs_v = {h: 0.0 for h in h_lines}
 
         for i in range(10): 
             fila = []
@@ -137,8 +144,7 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
 
         total = max(0.0001, p1 + px + p2)
-        # Brier Score Adjustment para la confianza
-        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 2.0))
+        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
 
@@ -155,7 +161,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (MANTENIDO INTACTO)
+# 4. DISEÑO UI/UX (ORIGINAL)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -249,17 +255,19 @@ with st.sidebar:
                     
                     if dl and dv:
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        eff_l = get_efficiency_factor(dl['team_id'], ligas_api[nombre_liga])
-                        eff_v = get_efficiency_factor(dv['team_id'], ligas_api[nombre_liga])
+                        
+                        # MEJORA: Elo y Momentum
+                        elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
+                        elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
                         
                         ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
-                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) * eff_l
+                        # Mezclamos promedio de temporada con momentum reciente
+                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) * 0.7 + (mom_l * 0.3)
                         st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/ph if ph>0 else 1.0)
-                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pa if pa>0 else 1.2) * eff_v
+                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pa if pa>0 else 1.2) * 0.7 + (mom_v * 0.3)
                         st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
                         
-                        st.session_state['form_l'] = 1.15 if int(dl['overall_league_position']) < int(dv['overall_league_position']) else 0.95
-                        st.session_state['form_v'] = 1.10 if int(dv['overall_league_position']) < int(dl['overall_league_position']) else 0.90
+                        st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         st.rerun()
 
@@ -267,7 +275,7 @@ with st.sidebar:
 # 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.0 QUANTUM + SYNC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.5 QUANTUM + SYNC</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -292,12 +300,14 @@ with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga)
-    hfa, fl, fv = st.session_state['hfa_league'], st.session_state['form_l'], st.session_state['form_v']
+    hfa = st.session_state['hfa_league']
     h2h_l, h2h_v = st.session_state['h2h_bias']
+    elo_l, elo_v = st.session_state['elo_bias']
     
-    # CÁLCULO LAMBDA FINAL (Precisión Máxima)
-    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * fl * h2h_l
-    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * fv * h2h_v
+    # CÁLCULO LAMBDA FINAL (Precisión Máxima V4.5)
+    # λ = (Ataque * Defensa * Media) * HFA * H2H * Elo Strength
+    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l
+    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * elo_v
     
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
@@ -305,7 +315,7 @@ if generar:
         if 1.5 <= line <= 3.5:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
-    sug = sorted([s for s in pool if 68 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+    sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
     
     msg = f"*OR936 QUANTUM ELITE*\n⚽ {nl_manual} vs {nv_manual}\n\n*PICKS:*\n"
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
@@ -358,4 +368,4 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | SHOT-EFFICIENCY & DYNAMIC RHO | OR936 ELITE v4.0</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | ELO-STRENGTH & MOMENTUM WEIGHTING | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

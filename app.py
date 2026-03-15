@@ -237,4 +237,4 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             st.markdown(f'<div class="score-badge">{score} ({prob:.1f}%)</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>MODELO GEMINI 1.5 FLASH | NO API DEPENDENCY | OR936 v4.6</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>MODELO GEMINI 1.5 FLASH | NO API DEPENDENCY | OR936 v4.6</p>", unsafe_allow_html=True) 

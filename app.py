@@ -35,31 +35,44 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (CON DIAGNÓSTICO INCLUIDO)
+# 2. FUNCIONES DE LÓGICA ELITE (RESISTENTES A TIMEOUT)
 # =================================================================
 
 def api_request_live(action, params=None):
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY, "_ts": time.time()})
-    try:
-        res = requests.get(BASE_URL, params=params, timeout=10)
-        data = res.json()
-        
-        # BLOQUE DE DIAGNÓSTICO: Si recibes un error de la API, muéstralo en pantalla
-        if isinstance(data, dict) and "error" in data:
-            st.error(f"⚠️ Error de API: {data.get('message')} (Código: {data.get('error')})")
-            return []
+    
+    # Sistema de 3 reintentos para evitar micro-caídas o saturación
+    for intento in range(3):
+        try:
+            # Timeout aumentado a 20 segundos
+            res = requests.get(BASE_URL, params=params, timeout=20)
+            data = res.json()
             
-        return data if isinstance(data, list) else []
-    except Exception as e: 
-        st.error(f"❌ Error de Conexión: {e}")
-        return []
+            if isinstance(data, dict) and "error" in data:
+                st.error(f"⚠️ Error de API: {data.get('message')} (Código: {data.get('error')})")
+                return []
+                
+            return data if isinstance(data, list) else []
+            
+        except requests.exceptions.Timeout:
+            if intento < 2: 
+                time.sleep(1) # Esperar un segundo antes del reintento
+                continue 
+            else:
+                st.warning("⏳ El servidor de la API está tardando demasiado. Reintenta en unos segundos.")
+                return []
+        except Exception as e: 
+            st.error(f"❌ Error de Conexión: {e}")
+            return []
+    return []
 
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
     params = {"action": "get_standings", "APIkey": API_KEY, "league_id": league_id}
     try:
-        res = requests.get(BASE_URL, params=params, timeout=10)
+        # Timeout aumentado a 20 segundos para standings
+        res = requests.get(BASE_URL, params=params, timeout=20)
         data = res.json()
         if isinstance(data, dict) and "error" in data: return []
         return data if isinstance(data, list) else []
@@ -218,7 +231,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (LISTA DE LIGAS OPTIMIZADA)
+# 5. SIDEBAR
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)

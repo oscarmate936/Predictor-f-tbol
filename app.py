@@ -18,7 +18,7 @@ BASE_URL = "https://apiv3.apifootball.com/"
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
-# Inicialización de estados (Incluyendo el nuevo historial)
+# Inicialización de estados
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
@@ -35,7 +35,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE
+# 2. FUNCIONES DE LÓGICA ELITE (CON DIAGNÓSTICO INCLUIDO)
 # =================================================================
 
 def api_request_live(action, params=None):
@@ -44,8 +44,16 @@ def api_request_live(action, params=None):
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
+        
+        # BLOQUE DE DIAGNÓSTICO: Si recibes un error de la API, muéstralo en pantalla
+        if isinstance(data, dict) and "error" in data:
+            st.error(f"⚠️ Error de API: {data.get('message')} (Código: {data.get('error')})")
+            return []
+            
         return data if isinstance(data, list) else []
-    except: return []
+    except Exception as e: 
+        st.error(f"❌ Error de Conexión: {e}")
+        return []
 
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
@@ -53,6 +61,7 @@ def api_request_cached(league_id):
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
+        if isinstance(data, dict) and "error" in data: return []
         return data if isinstance(data, list) else []
     except: return []
 
@@ -209,16 +218,31 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR
+# 5. SIDEBAR (LISTA DE LIGAS OPTIMIZADA)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
-        "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
-        "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
-        "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
-        "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169
+        "Liga Mayor (El Salvador)": 601,
+        "Premier League (Inglaterra)": 152,
+        "La Liga (España)": 302,
+        "Serie A (Italia)": 207,
+        "Bundesliga (Alemania)": 175,
+        "Ligue 1 (Francia)": 168,
+        "Primeira Liga (Portugal)": 262,
+        "Saudi Pro League": 307,
+        "Trendyol Süper Lig": 322,
+        "Brasileirão Betano (Série A)": 99,
+        "Brasileirão Série B": 100,
+        "UEFA Champions League": 3,
+        "UEFA Europa League": 4,
+        "UEFA Conference League": 683,
+        "Copa Libertadores": 13,
+        "FA Cup (Inglaterra)": 145,
+        "Copa del Rey (España)": 300,
+        "Coppa Italia (Italia)": 209,
+        "DFB Pokal (Alemania)": 177,
+        "Copa de Brasil": 101
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
@@ -306,8 +330,8 @@ if generar:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
-    
-    # GUARDAR EN HISTORIAL (Evitando duplicados del mismo partido)
+
+    # GUARDAR EN HISTORIAL
     nuevo_registro = {
         "fecha": ahora_sv.strftime("%H:%M"),
         "partido": f"{nl_manual} vs {nv_manual}",

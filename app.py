@@ -10,9 +10,8 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# 1. CONFIGURACIÓN API (ACTUALIZADA A THESPORTSDB) & ESTADO
+# 1. CONFIGURACIÓN API (THESPORTSDB) & ESTADO
 # =================================================================
-# Basado en la imagen: API Key gratuita es '123'
 API_KEY = "123" 
 BASE_URL = f"https://www.thesportsdb.com/api/v1/json/{API_KEY}/"
 
@@ -34,7 +33,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA (ADAPTADAS A THESPORTSDB)
+# 2. FUNCIONES DE LOGICA DE DATOS
 # =================================================================
 
 def api_get(endpoint, params=None):
@@ -45,14 +44,22 @@ def api_get(endpoint, params=None):
     except: return None
 
 @st.cache_data(ttl=300)
-def get_league_data(league_id):
-    # Obtiene tabla de posiciones y próximos eventos de la liga
+def get_comprehensive_data(league_id):
+    # Intentar obtener tabla y eventos (Próximos y Pasados para asegurar datos en Free Tier)
     table_data = api_get("lookuptable.php", {"l": league_id, "s": "2025-2026"})
-    next_events = api_get("eventsnextleague.php", {"id": league_id})
-    return table_data.get('table', []) if table_data else [], next_events.get('events', []) if next_events else []
+    next_ev = api_get("eventsnextleague.php", {"id": league_id})
+    past_ev = api_get("eventspastleague.php", {"id": league_id})
+    
+    standings = table_data.get('table', []) if table_data else []
+    # Combinar eventos para tener una lista de donde elegir
+    all_events = []
+    if next_ev and next_ev.get('events'): all_events += next_ev['events']
+    if past_ev and past_ev.get('events'): all_events += past_ev['events']
+    
+    return standings, all_events
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5 + CALIBRACIÓN)
+# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
 # =================================================================
 
 class MotorMatematico:
@@ -125,10 +132,9 @@ st.markdown("""
     .stApp { background: var(--bg); color: #e0e0e0; }
     .master-card { background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9)); padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15); box-shadow: 0 20px 40px rgba(0,0,0,0.6); margin-bottom: 30px; }
     .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; font-size: 1.05em; }
-    .elite-alert { background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(0,255,163,0.05)); border: 1px solid var(--primary); }
-    .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
-    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
-    .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
+    .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; width: 100%; }
+    .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -141,9 +147,9 @@ def triple_bar(p1, px_val, p2, n1, nx, n2):
                 <span style="color:var(--primary)">{n2}: <b>{p2:.1f}%</b></span>
             </div>
             <div style="display: flex; height: 16px; border-radius: 50px; overflow: hidden; background: #1a1a1a;">
-                <div style="width: {p1}%; background: var(--secondary); box-shadow: 0 0 15px var(--secondary);"></div>
+                <div style="width: {p1}%; background: var(--secondary);"></div>
                 <div style="width: {px_val}%; background: #444;"></div>
-                <div style="width: {p2}%; background: var(--primary); box-shadow: 0 0 15px var(--primary);"></div>
+                <div style="width: {p2}%; background: var(--primary);"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -162,7 +168,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (THESPORTSDB INTEGRATION)
+# 5. SIDEBAR (UPDATE ROBUSTO)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -176,37 +182,30 @@ with st.sidebar:
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     league_id = ligas_api[nombre_liga]
 
-    if st.button("SYNC DATA"):
-        st.cache_data.clear()
-        with st.spinner("QUANTUM DEEP SYNC..."):
-            standings, events = get_league_data(league_id)
-            
-            if standings and events:
-                # Usamos el primer partido disponible en la lista de próximos eventos
-                match = events[0]
+    standings, events = get_comprehensive_data(league_id)
+
+    if events:
+        # Generar lista legible de partidos encontrados
+        op_partidos = {f"{e['strEvent']} ({e['dateEvent']})": e for e in events}
+        p_sel = st.selectbox("📍 Partidos Disponibles", list(op_partidos.keys()))
+
+        if st.button("SYNC DATA"):
+            with st.spinner("QUANTUM SYNC..."):
+                match = op_partidos[p_sel]
+                def buscar(tid): return next((t for t in standings if t['idTeam'] == tid), None)
                 
-                def buscar_en_tabla(team_id):
-                    return next((t for t in standings if t['idTeam'] == team_id), None)
-
-                dl = buscar_en_tabla(match['idHomeTeam'])
-                dv = buscar_en_tabla(match['idAwayTeam'])
-
+                dl, dv = buscar(match['idHomeTeam']), buscar(match['idAwayTeam'])
                 if dl and dv:
-                    st.session_state['nl_auto'] = dl['strTeam']
-                    st.session_state['nv_auto'] = dv['strTeam']
-                    
-                    pj_l = int(dl['intPlayed']) if int(dl['intPlayed']) > 0 else 1
-                    pj_v = int(dv['intPlayed']) if int(dv['intPlayed']) > 0 else 1
-                    
-                    # Cálculo de promedios para el motor matemático
+                    st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['strTeam'], dv['strTeam']
+                    pj_l, pj_v = max(1, int(dl['intPlayed'])), max(1, int(dv['intPlayed']))
                     st.session_state['lgf_auto'] = float(dl['intGoalsFor']) / pj_l
                     st.session_state['lgc_auto'] = float(dl['intGoalsAgainst']) / pj_l
                     st.session_state['vgf_auto'] = float(dv['intGoalsFor']) / pj_v
                     st.session_state['vgc_auto'] = float(dv['intGoalsAgainst']) / pj_v
-                    
-                    # Estimar media de liga basándose en los equipos actuales
-                    st.session_state['p_liga_auto'] = 2.5
+                    st.success("Sincronización Exitosa")
                     st.rerun()
+    else:
+        st.warning("No se hallaron partidos. Intenta con Premier League.")
 
 # =================================================================
 # 6. CONTENIDO PRINCIPAL
@@ -237,67 +236,46 @@ with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga)
-    hfa = st.session_state['hfa_league']
-    h2h_l, h2h_v = st.session_state['h2h_bias']
-    elo_l, elo_v = st.session_state['elo_bias']
-    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l
-    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * elo_v
+    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * st.session_state['hfa_league']
+    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/st.session_state['hfa_league'])
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
-    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
-    for line, p in res['GOLES'].items():
-        if 1.5 <= line <= 3.5:
-            pool.append({"t": f"Over {line} Goles", "p": p[0]})
-            pool.append({"t": f"Under {line} Goles", "p": p[1]})
+    
+    # Picks Logic
+    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
+    for l, p in res['GOLES'].items():
+        if 1.5 <= l <= 3.5: pool.append({"t": f"Over {l} Goles", "p": p[0]}); pool.append({"t": f"Under {l} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
-    msg = f"*OR936 QUANTUM ELITE*\n⚽ {nl_manual} vs {nv_manual}\n\n*PICKS:*\n"
-    for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
-    encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
-    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
+
+    # UI Render
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
-        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
-        for s in sug:
-            clase = "elite-alert" if s['p'] > 85 else ""
-            st.markdown(f'<div class="verdict-item {clase}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES</h4>", unsafe_allow_html=True)
+        for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
         st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+    
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
-
-    t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
+    
+    t1, t2, t3, t4 = st.tabs(["🥅 GOLES", "🏆 MERCADOS", "🚩 ESPECIALES", "🧩 MATRIZ"])
     with t1:
-        ga, gb = st.columns(2); 
+        ga, gb = st.columns(2)
         with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
+            for l in [0.5, 1.5, 2.5, 3.5, 4.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
     with t2:
-        ha, hb = st.columns(2)
-        with ha:
-            st.markdown(f"<h5 style='color:var(--secondary);'>{nl_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
-        with hb:
-            st.markdown(f"<h5 style='color:var(--primary);'>{nv_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
-    with t3:
-        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
+        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0])
         dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-    with t4:
+    with t3:
         ta, co = st.columns(2)
         with ta:
-            st.markdown("<h5 style='color:#ff4b4b; text-align:center;'>PROYECCIÓN DE TARJETAS</h5>", unsafe_allow_html=True)
             for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
         with co:
-            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
-    with t5:
+    with t4:
         df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
-        fig = px.imshow(df_matriz, labels=dict(x=f"Goles Visitante", y=f"Goles Local", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
-        fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
-        st.plotly_chart(fig, use_container_width=True)
-    with t6:
-        st.info("Auditoría disponible en versión Pro para TheSportsDB.")
+        st.plotly_chart(px.imshow(df_matriz, text_auto=".1f", color_continuous_scale=['#05070a', '#00ffa3', '#d4af37']), use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MOMENTUM WEIGHTING | OR936 ELITE v4.5</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | THESPORTSDB ENGINE v4.5</p>", unsafe_allow_html=True)

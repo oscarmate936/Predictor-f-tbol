@@ -46,31 +46,32 @@ def api_request_live(action, params=None):
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
+        if isinstance(data, dict) and 'error' in data: return []
         return data if isinstance(data, list) or isinstance(data, dict) else []
     except: return []
 
 def get_lineups_data(match_id):
     res = api_request_live("get_lineups", {"match_id": match_id})
-    if not res or match_id not in res: return None, None
+    if not res or not isinstance(res, dict) or match_id not in res: return None, None
     return res[match_id].get('lineup', {}).get('home', {}), res[match_id].get('lineup', {}).get('away', {})
 
 def draw_football_pitch(home_players, away_players, home_name, away_name):
     data = []
-    # Local
+    # Local (Lado izquierdo)
     for p in home_players.get('starting_lineups', []):
         try:
             coords = p.get('lineup_position', '5-5').split('-')
             y = 100 - (int(coords[0]) * 10)
             x = int(coords[1]) * 4.5
-            data.append({'x': x, 'y': y, 'Jugador': p['lineup_player'], 'Equipo': home_name, 'Color': '#00ffa3'})
+            data.append({'x': x, 'y': y, 'Jugador': p['lineup_player'], 'Equipo': home_name})
         except: continue
-    # Visitante
+    # Visitante (Lado derecho)
     for p in away_players.get('starting_lineups', []):
         try:
             coords = p.get('lineup_position', '5-5').split('-')
             y = 100 - (int(coords[0]) * 10)
             x = 100 - (int(coords[1]) * 4.5)
-            data.append({'x': x, 'y': y, 'Jugador': p['lineup_player'], 'Equipo': away_name, 'Color': '#d4af37'})
+            data.append({'x': x, 'y': y, 'Jugador': p['lineup_player'], 'Equipo': away_name})
         except: continue
 
     df = pd.DataFrame(data)
@@ -233,7 +234,6 @@ st.markdown("""
     .master-card { background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9)); padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15); margin-bottom: 30px; }
     .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; }
     .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; }
-    .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -270,7 +270,7 @@ with st.sidebar:
     fecha_analisis = st.date_input("📅 JORNADA", value=ahora_sv.date())
     raw_events = api_request_live("get_events", {"from": (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d'), "to": (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
 
-    if raw_events:
+    if isinstance(raw_events, list) and len(raw_events) > 0 and 'match_id' in raw_events[0]:
         op_p = {f"({e['match_date']}) {e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in raw_events}
         p_sel = st.selectbox("📍 Partido", list(op_p.keys()))
         if st.button("SYNC DATA"):
@@ -302,6 +302,8 @@ with st.sidebar:
                     st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
                     st.session_state['elo_bias'], st.session_state['nl_auto'], st.session_state['nv_auto'] = (elo_l, elo_v), dl['team_name'], dv['team_name']
                     st.rerun()
+    else:
+        st.warning("No se encontraron partidos para la selección.")
 
 # =================================================================
 # 6. CONTENIDO PRINCIPAL
@@ -320,7 +322,7 @@ with col_v:
     vgf, vgc = va.number_input("GF V", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC V", 0.0, 10.0, key='vgc_auto')
     vtj, vco = va.number_input("TJ V", 0.0, 15.0, key='vtj_auto'), vb.number_input("CR V", 0.0, 20.0, key='vco_auto')
 
-p_liga = st.slider("Media Goles", 0.5, 5.0, key='p_liga_auto')
+p_liga = st.slider("Media Goles Liga", 0.5, 5.0, key='p_liga_auto')
 if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     motor = MotorMatematico(league_avg=p_liga)
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * st.session_state['hfa_league'] * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l']
@@ -353,7 +355,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             h_lineup, a_lineup = get_lineups_data(st.session_state['current_match_id'])
             if h_lineup and a_lineup:
                 st.plotly_chart(draw_football_pitch(h_lineup, a_lineup, nl_manual, nv_manual), use_container_width=True)
-            else: st.warning("Alineaciones no disponibles (disponibles 60min antes).")
-        else: st.info("Sincroniza un partido primero.")
+            else: st.warning("Alineaciones no disponibles (disponibles 60 min antes del inicio).")
+        else: st.info("Sincroniza un partido en el menú lateral para ver las tácticas.")
 
 st.markdown("<p style='text-align: center; color: #333;'>SYSTEM AUTHENTICATED | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

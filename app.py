@@ -339,17 +339,19 @@ if generar:
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * elo_v * f_v * bonus_v
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
     
-    sug = sorted([s for s in [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}] + [{"t": f"Over {l} Goles", "p": res['GOLES'][l][0]} for l in [1.5, 2.5, 3.5]] if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+    sug_items = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
+    for l in [1.5, 2.5, 3.5]:
+        sug_items.append({"t": f"Over {l} Goles", "p": res['GOLES'][l][0]})
+    sug = sorted([s for s in sug_items if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+    
     encoded_msg = urllib.parse.quote(f"*OR936 ELITE*\n⚽ {nl_manual} vs {nv_manual}\n*MARCADOR:* {res['TOP'][0][0]}")
     with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
     
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
-        # ALERTAS DE LESIONADOS CRÍTICOS
         if inj_l_count > 3: st.markdown(f'<div class="warning-alert">⚠️ CUIDADO: {nl_manual} mermado ({inj_l_count} bajas)</div>', unsafe_allow_html=True)
         if inj_v_count > 3: st.markdown(f'<div class="warning-alert">⚠️ CUIDADO: {nv_manual} mermado ({inj_v_count} bajas)</div>', unsafe_allow_html=True)
-        
         st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
         for s in sug: st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 85 else ""}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
@@ -361,19 +363,35 @@ if generar:
     t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA", "📋 FORMACIONES"])
     with t1:
         ga, gb = st.columns(2)
-        with ga: [dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1]) for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]]
+        with ga: 
+            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]:
+                dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
     with t2:
         ha, hb = st.columns(2)
-        with ha: [dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3") for h, p in res['HANDICAPS']['L'].items()]
-        with hb: [dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37") for h, p in res['HANDICAPS']['V'].items()]
-    with t3: [dual_bar_explicit(label, p, "", 100-p, color=c) for label, p, c in [(f"1X ({nl_manual} o X)", res['DC'][0], "#00ffa3"), (f"X2 ({nv_manual} o X)", res['DC'][1], "#d4af37")]]
+        with ha: 
+            for h, p in res['HANDICAPS']['L'].items():
+                dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
+        with hb: 
+            for h, p in res['HANDICAPS']['V'].items():
+                dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
+    with t3: 
+        dual_bar_explicit(f"1X ({nl_manual} o X)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
+        dual_bar_explicit(f"X2 ({nv_manual} o X)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
     with t4:
         ta, co = st.columns(2)
-        with ta: [dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b") for l, p in res['TARJETAS'].items()]
-        with co: [dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3") for l, p in res['CORNERS'].items()]
-    with t5: st.plotly_chart(px.imshow(pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)]), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f"), use_container_width=True)
-    with t6: [st.markdown(f"<div style='background:rgba(255,255,255,0.03); padding:10px; border-radius:10px; margin-bottom:5px;'>{m['match_date']} | <b>{m['match_hometeam_name']} {m['match_hometeam_score']}-{m['match_awayteam_score']} {m['match_awayteam_name']}</b></div>", unsafe_allow_html=True) for m in st.session_state['audit_results']]
+        with ta: 
+            for l, p in res['TARJETAS'].items():
+                dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
+        with co: 
+            for l, p in res['CORNERS'].items():
+                dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
+    with t5: 
+        fig = px.imshow(pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)]), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f")
+        st.plotly_chart(fig, use_container_width=True)
+    with t6: 
+        for m in st.session_state['audit_results']: 
+            st.markdown(f"<div style='background:rgba(255,255,255,0.03); padding:10px; border-radius:10px; margin-bottom:5px;'>{m['match_date']} | <b>{m['match_hometeam_name']} {m['match_hometeam_score']}-{m['match_awayteam_score']} {m['match_awayteam_name']}</b></div>", unsafe_allow_html=True)
     with t7:
         if st.session_state['lineups_data']:
             l_info = st.session_state['lineups_data']
@@ -386,6 +404,8 @@ if generar:
         else: st.warning("Alineaciones no disponibles aún.")
         st.markdown("---")
         if st.session_state['injuries_data']:
-            [st.markdown(f"⚠️ **{p['team_name']}**: {p['player_name']} ({p['reason']})") for p in st.session_state['injuries_data'] if p['team_name'] in [nl_manual, nv_manual]]
+            for p in st.session_state['injuries_data']:
+                if p['team_name'] in [nl_manual, nv_manual]:
+                    st.markdown(f"⚠️ **{p['team_name']}**: {p['player_name']} ({p['reason']})")
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | LINEUP & INJURY CALIBRATION | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

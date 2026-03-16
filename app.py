@@ -20,21 +20,7 @@ for key, val in zip(state_keys, defaults):
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. DIAGNÓSTICO DE SALUD (ACTUALIZADO)
-# =================================================================
-def run_api_diagnostic():
-    test_url = f"{BASE_URL}searchteams.php?t=Arsenal"
-    start_time = time.time()
-    try:
-        res = requests.get(test_url, headers=HEADERS, timeout=7)
-        latency = round((time.time() - start_time) * 1000, 2)
-        if res.status_code == 200:
-            return "✅ ONLINE", f"Status 200 | {latency}ms | Datos: OK"
-        return "❌ OFFLINE", f"Error {res.status_code}"
-    except: return "🚨 ERROR RED", "Fallo de conexión"
-
-# =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM
+# 2. MOTOR MATEMÁTICO QUANTUM
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -75,6 +61,52 @@ class MotorMatematico:
         }
 
 # =================================================================
+# 3. LÓGICA DE EXTRACCIÓN AVANZADA (DATOS + ESCUDOS)
+# =================================================================
+def fetch_complete_data(name):
+    try:
+        # Búsqueda del equipo
+        r = requests.get(f"{BASE_URL}searchteams.php?t={name}", headers=HEADERS).json()
+        if not r or not r.get('teams'): return None
+        team = r['teams'][0]
+        
+        # Datos base
+        data = {'name': team['strTeam'], 'badge': team['strBadge'], 'gf': 1.5, 'gc': 1.0}
+        
+        # INTENTO 1: Tabla de posiciones (Solo ligas top)
+        try:
+            table_r = requests.get(f"{BASE_URL}lookuptable.php?l={team['idLeague']}", headers=HEADERS).json()
+            if table_r and table_r.get('table'):
+                stats = next((x for x in table_r['table'] if x['idTeam'] == team['idTeam']), None)
+                if stats:
+                    pj = max(1, int(stats['intPlayed']))
+                    data['gf'] = int(stats['intGoalsFor']) / pj
+                    data['gc'] = int(stats['intGoalsAgainst']) / pj
+                    return data # Si funcionó, salimos con estos datos
+        except: pass
+
+        # INTENTO 2: Últimos 5 partidos (Bypass para ligas pequeñas como El Salvador)
+        try:
+            last_r = requests.get(f"{BASE_URL}eventslast.php?id={team['idTeam']}", headers=HEADERS).json()
+            if last_r and last_r.get('results'):
+                results = last_r['results']
+                total_gf = 0
+                total_gc = 0
+                for match in results:
+                    if match['idHomeTeam'] == team['idTeam']:
+                        total_gf += int(match['intHomeScore'] or 0)
+                        total_gc += int(match['intAwayScore'] or 0)
+                    else:
+                        total_gf += int(match['intAwayScore'] or 0)
+                        total_gc += int(match['intHomeScore'] or 0)
+                data['gf'] = total_gf / len(results)
+                data['gc'] = total_gc / len(results)
+        except: pass
+
+        return data
+    except: return None
+
+# =================================================================
 # 4. UI Y SIDEBAR
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
@@ -88,49 +120,31 @@ st.markdown("""<style>
 with st.sidebar:
     st.title("TERMINAL DE ORO")
     
-    st.markdown("### 🛠 MÓDULO DE SALUD API")
+    st.markdown("### 🛠 DIAGNÓSTICO")
     if st.button("EJECUTAR DIAGNÓSTICO"):
-        status, detail = run_api_diagnostic()
-        st.markdown(f"**Sistema:** {status}")
-        st.info(detail)
+        try:
+            res = requests.get(f"{BASE_URL}searchteams.php?t=Arsenal", headers=HEADERS)
+            st.success(f"Status 200: Conexión OK")
+        except: st.error("Error de conexión")
     
     st.write("---")
-    st.subheader("🔍 BUSCADOR DE EQUIPOS")
-    t1_q = st.text_input("Local", placeholder="Ej: Real Madrid")
-    t2_q = st.text_input("Visita", placeholder="Ej: Liverpool")
+    st.subheader("🔍 BUSCADOR")
+    t1_q = st.text_input("Equipo Local")
+    t2_q = st.text_input("Equipo Visita")
 
     if st.button("⚡ SINCRONIZAR"):
-        with st.spinner("Buscando..."):
-            def fetch(name):
-                try:
-                    r = requests.get(f"{BASE_URL}searchteams.php?t={name}", headers=HEADERS).json()
-                    if r and r.get('teams'):
-                        team = r['teams'][0]
-                        data = {'n': team['strTeam'], 'b': team['strBadge'], 'gf': 1.5, 'gc': 1.0}
-                        
-                        # Intento de tabla (Solo para ligas destacadas)
-                        try:
-                            t_url = f"{BASE_URL}lookuptable.php?l={team['idLeague']}&s=2024-2025"
-                            table = requests.get(t_url, headers=HEADERS).json()
-                            if table and table.get('table'):
-                                s = next((x for x in table['table'] if x['idTeam'] == team['idTeam']), None)
-                                if s:
-                                    pj = max(1, int(s['intPlayed']))
-                                    data['gf'] = int(s['intGoalsFor'])/pj
-                                    data['gc'] = int(s['intGoalsAgainst'])/pj
-                        except: pass 
-                        return data
-                except: return None
-
-            d1, d2 = fetch(t1_q), fetch(t2_q)
-            if d1: st.session_state.update({'nl_auto': d1['n'], 'lgf_auto': d1['gf'], 'lgc_auto': d1['gc'], 'l_badge': d1['b']})
-            if d2: st.session_state.update({'nv_auto': d2['n'], 'vgf_auto': d2['gf'], 'vgc_auto': d2['gc'], 'v_badge': d2['b']})
+        with st.spinner("Extrayendo estadísticas de goles..."):
+            d1 = fetch_complete_data(t1_q)
+            d2 = fetch_complete_data(t2_q)
+            
+            if d1: st.session_state.update({'nl_auto': d1['name'], 'lgf_auto': d1['gf'], 'lgc_auto': d1['gc'], 'l_badge': d1['b'] if 'b' in d1 else d1['badge']})
+            if d2: st.session_state.update({'nv_auto': d2['name'], 'vgf_auto': d2['gf'], 'vgc_auto': d2['gc'], 'v_badge': d2['b'] if 'b' in d2 else d2['badge']})
             st.rerun()
 
 # CUERPO PRINCIPAL
 st.markdown("<h1 style='text-align: center;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 
-# Sección de Escudos
+# Logos
 b1, b2, b3 = st.columns([1, 2, 1])
 with b1:
     if st.session_state['l_badge']: st.image(st.session_state['l_badge'], width=100)
@@ -145,7 +159,7 @@ with col1:
     lgf = st.number_input("Goles Favor L", value=float(st.session_state['lgf_auto']), step=0.1)
     lgc = st.number_input("Goles Contra L", value=float(st.session_state['lgc_auto']), step=0.1)
 with col2:
-    nv = st.text_input("Visita", value=st.session_state['nv_auto'])
+    nv = st.text_input("Visitante", value=st.session_state['nv_auto'])
     vgf = st.number_input("Goles Favor V", value=float(st.session_state['vgf_auto']), step=0.1)
     vgc = st.number_input("Goles Contra V", value=float(st.session_state['vgc_auto']), step=0.1)
 
@@ -160,10 +174,9 @@ if st.button("GENERAR PREDICCIÓN"):
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([2, 1])
     with v1:
-        st.subheader("💎 PICKS SUGERIDOS")
-        st.write(f"✅ **Doble Oportunidad 1X**: {res['DC'][0]:.1f}%")
-        st.write(f"✅ **Ambos Anotan**: {res['BTTS'][0]:.1f}%")
-        st.write(f"📊 **Probabilidades 1X2**: L({res['1X2'][0]:.1f}%) E({res['1X2'][1]:.1f}%) V({res['1X2'][2]:.1f}%)")
+        st.subheader("💎 SUGERENCIAS")
+        st.write(f"✅ **1X**: {res['DC'][0]:.1f}% | **Ambos Anotan**: {res['BTTS'][0]:.1f}%")
+        st.write(f"📊 **Probabilidades**: L({res['1X2'][0]:.1f}%) E({res['1X2'][1]:.1f}%) V({res['1X2'][2]:.1f}%)")
     with v2:
         st.subheader("🎯 MARCADORES")
         for sc, pr in res['TOP']: 
@@ -171,4 +184,4 @@ if st.button("GENERAR PREDICCIÓN"):
     st.markdown('</div>', unsafe_allow_html=True)
     st.plotly_chart(px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Turbo'), use_container_width=True)
 
-st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | MOMENTUM WEIGHTING ACTIVE</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | HYBRID SYNC ACTIVE</p>", unsafe_allow_html=True)

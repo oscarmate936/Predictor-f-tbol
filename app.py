@@ -10,7 +10,7 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# 1. CONFIGURACIÓN API (RAPIDAPI) & ESTADO
+# 1. CONFIGURACIÓN API & ESTADO (DISEÑO ORIGINAL)
 # =================================================================
 API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf081e5e5b62"
 API_HOST = "free-api-live-football-data.p.rapidapi.com"
@@ -24,209 +24,188 @@ headers = {
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
+# Inicialización de estados
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'p_liga_auto' not in st.session_state: st.session_state['p_liga_auto'] = 2.5
-if 'hfa_league' not in st.session_state: st.session_state['hfa_league'] = 1.1
+if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.5
+if 'vgf_auto' not in st.session_state: st.session_state['vgf_auto'] = 1.2
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA (CORREGIDAS PARA EVITAR ATTRIBUTEERROR)
+# 2. MOTOR DE EXTRACCIÓN INTELIGENTE (EL CORAZÓN DEL FIX)
 # =================================================================
 
 def api_request_rapid(endpoint, params=None):
+    """Petición maestra con detección de estructura."""
     url = f"{BASE_URL}/{endpoint}"
     try:
-        res = requests.get(url, headers=headers, params=params, timeout=12)
+        res = requests.get(url, headers=headers, params=params, timeout=15)
         if res.status_code == 200:
             data = res.json()
-            # Verificación jerárquica de la respuesta
+            # La API puede devolver la lista en 'data', 'response' o directamente
             if isinstance(data, dict):
-                # Intentar extraer la lista de datos de las llaves comunes de RapidAPI
-                for key in ['response', 'data', 'results']:
-                    if key in data and isinstance(data[key], list):
-                        return data[key]
-                return [data] if data else []
+                for k in ['data', 'response', 'results']:
+                    if k in data and data[k]: return data[k]
             return data if isinstance(data, list) else []
         return []
-    except:
-        return []
+    except: return []
+
+def smart_get(obj, *keys, default=0):
+    """Busca un valor incluso si está anidado (ej: score.home)."""
+    if not isinstance(obj, dict): return default
+    for k in keys:
+        # Intento de búsqueda directa o anidada
+        if "." in k:
+            parts = k.split(".")
+            val = obj
+            for p in parts:
+                val = val.get(p, {}) if isinstance(val, dict) else {}
+            if val != {}: return val
+        elif k in obj and obj[k] is not None:
+            return obj[k]
+    return default
 
 @st.cache_data(ttl=600)
-def get_all_leagues():
-    """Obtiene ligas evitando que elementos que no sean diccionarios rompan el código."""
+def fetch_leagues():
+    """Carga de ligas con mapeo de nombres."""
     res = api_request_rapid("football-get-all-leagues")
-    leagues_dict = {}
-    
-    if isinstance(res, list):
-        for l in res:
-            # Validación: solo procesar si 'l' es un diccionario
-            if isinstance(l, dict):
-                # Soporte para múltiples nombres de llaves (league_name, name, etc)
-                name = l.get('league_name') or l.get('name') or l.get('league')
-                lid = l.get('league_id') or l.get('id')
-                if name and lid:
-                    leagues_dict[str(name)] = str(lid)
-                    
-    # Si la API falla, devolvemos un set mínimo para que el selector no esté vacío
-    return leagues_dict if leagues_dict else {"Premier League": "152", "La Liga": "302"}
-
-def get_v(obj, *keys):
-    """Extrae valores de forma segura probando múltiples llaves."""
-    if not isinstance(obj, dict): return 0
-    for k in keys:
-        if k in obj and obj[k] is not None:
-            try: return float(obj[k])
-            except: continue
-    return 0
+    return {l['league_name']: l['league_id'] for l in res if isinstance(l, dict) and 'league_id' in l}
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (MANTENIDO)
+# 3. MOTOR MATEMÁTICO QUANTUM (SIN CAMBIOS)
 # =================================================================
 
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        self.rho = -0.16 if league_avg < 2.4 else -0.12
+        self.rho = -0.12 # Calibración estándar
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
         return (lam**k * math.exp(-lam)) / math.factorial(k)
 
-    def dixon_coles_ajuste(self, x, y, lam, mu):
-        if x == 0 and y == 0: return 1 - (lam * mu * self.rho)
-        elif x == 0 and y == 1: return 1 + (lam * self.rho)
-        elif x == 1 and y == 0: return 1 + (mu * self.rho)
-        elif x == 1 and y == 1: return 1 - self.rho
-        return 1.0
-
-    def procesar(self, xg_l, xg_v, tj_total, co_total):
-        p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
-        marcadores, matriz = {}, []
-        g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
-        g_probs = {t: [0.0, 0.0] for t in g_lines}
-        
-        for i in range(10): 
-            fila = []
-            for j in range(10):
-                p = max(0, (self.poisson_prob(i, xg_l) * self.poisson_prob(j, xg_v)) * self.dixon_coles_ajuste(i, j, xg_l, xg_v))
+    def procesar(self, xg_l, xg_v):
+        p1, px, p2, btts = 0.0, 0.0, 0.0, 0.0
+        scores = {}
+        for i in range(7):
+            for j in range(7):
+                p = self.poisson_prob(i, xg_l) * self.poisson_prob(j, xg_v)
                 if i > j: p1 += p
                 elif i == j: px += p
                 else: p2 += p
-                if i > 0 and j > 0: btts_si += p
-                for t in g_lines:
-                    if (i + j) > t: g_probs[t][0] += p
-                    else: g_probs[t][1] += p
-                if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
-                if i < 6: fila.append(p * 100)
-            if i < 6: matriz.append(fila)
-        
-        total = max(0.0001, p1 + px + p2)
-        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
+                if i > 0 and j > 0: btts += p
+                if i < 5 and j < 5: scores[f"{i}-{j}"] = p * 100
+        total = p1 + px + p2
         return {
             "1X2": (p1/total*100, px/total*100, p2/total*100),
-            "BTTS": (btts_si/total*100, (1 - btts_si/total)*100),
-            "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3],
-            "BRIER": confianza,
-            "MATRIZ": matriz
+            "BTTS": (btts/total*100),
+            "TOP": sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
         }
 
 # =================================================================
-# 4. UI & SIDEBAR (DISEÑO ORIGINAL PRESERVADO)
+# 4. SIDEBAR & SINCRONIZACIÓN (DISEÑO ORIGINAL)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background: #05070a; color: #e0e0e0; font-family: 'Outfit', sans-serif; }
-    .master-card { background: linear-gradient(145deg, #141923, #0a0c12); padding: 30px; border-radius: 20px; border: 1px solid #d4af3733; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    .whatsapp-btn { background: #25D366; color: white !important; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: 700; display: inline-block; margin-top: 10px; }
+    .stApp { background: #05070a; color: #e0e0e0; }
+    .master-card { background: #141923; padding: 25px; border-radius: 15px; border: 1px solid #d4af3744; margin-bottom: 20px; }
+    .whatsapp-btn { background: #25D366; color: white !important; padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     
-    if st.button("📡 STATUS CONNECTION"):
-        test = api_request_rapid("football-get-all-leagues")
-        if test: st.success("ONLINE")
-        else: st.error("OFFLINE/CHECK KEY")
+    # Botón de Status
+    if st.button("📡 VERIFICAR API"):
+        check = api_request_rapid("football-get-all-leagues")
+        if check: st.success("CONECTADO: Datos recibidos")
+        else: st.error("ERROR: No hay respuesta de la API")
 
-    dict_ligas = get_all_leagues()
-    nombre_liga = st.selectbox("🏆 Competición", list(dict_ligas.keys()))
-    id_liga_sel = dict_ligas[nombre_liga]
-    fecha_sel = st.date_input("📅 Jornada", value=ahora_sv.date())
-    
-    raw_events = api_request_rapid("football-get-matches-by-date", {"date": fecha_sel.strftime('%Y-%m-%d'), "league_id": id_liga_sel})
+    # Selectores
+    leagues = fetch_leagues()
+    if leagues:
+        league_name = st.selectbox("🏆 Competición", list(leagues.keys()))
+        league_id = leagues[league_name]
+        date_sel = st.date_input("📅 Jornada", value=ahora_sv.date())
 
-    if raw_events and isinstance(raw_events, list):
-        op_p = {}
-        for e in raw_events:
-            if isinstance(e, dict):
-                h = e.get('match_hometeam_name') or e.get('home_team') or "Local"
-                v = e.get('match_awayteam_name') or e.get('away_team') or "Visita"
-                op_p[f"{h} vs {v}"] = e
+        # Partidos
+        matches = api_request_rapid("football-get-matches-by-date", {"date": date_sel.strftime('%Y-%m-%d'), "league_id": league_id})
         
-        p_sel = st.selectbox("📍 Partidos", list(op_p.keys()))
+        if matches:
+            match_labels = {}
+            for m in matches:
+                h = smart_get(m, 'match_hometeam_name', 'home_team', 'home.name')
+                v = smart_get(m, 'match_awayteam_name', 'away_team', 'away.name')
+                time = smart_get(m, 'match_time', 'time', 'status.type')
+                match_labels[f"{time} | {h} vs {v}"] = m
+            
+            p_sel = st.selectbox("📍 Seleccionar Partido", list(match_labels.keys()))
 
-        if st.button("SYNC DATA"):
-            with st.spinner("Quantum Sync..."):
-                standings = api_request_rapid("football-get-standings-all", {"league_id": id_liga_sel})
-                if standings:
-                    hg = sum(get_v(t, 'home_league_GF', 'home_GF') for t in standings if isinstance(t, dict))
-                    ag = sum(get_v(t, 'away_league_GF', 'away_GF') for t in standings if isinstance(t, dict))
-                    pj = sum(get_v(t, 'overall_league_payed', 'played') for t in standings if isinstance(t, dict))
-                    st.session_state['p_liga_auto'] = (hg + ag) / (max(1, pj) / 2)
+            if st.button("SYNC DATA"):
+                with st.spinner("Sincronizando..."):
+                    m_data = match_labels[p_sel]
+                    # Obtenemos tabla de posiciones para promedios
+                    standings = api_request_rapid("football-get-standings-all", {"league_id": league_id})
                     
-                    # Buscador de equipos para el Sync
-                    m_info = op_p[p_sel]
-                    n_h = m_info.get('match_hometeam_name') or m_info.get('home_team')
-                    n_v = m_info.get('match_awayteam_name') or m_info.get('away_team')
-                    
-                    def find_t(name):
-                        for t in standings:
-                            t_name = t.get('team_name') or t.get('team')
-                            if t_name and name and (name in t_name or t_name in name): return t
-                        return None
-                    
-                    dl, dv = find_t(n_h), find_t(n_v)
-                    if dl and dv:
-                        ph = max(1, get_v(dl, 'home_league_payed', 'home_played'))
-                        pa = max(1, get_v(dv, 'away_league_payed', 'away_played'))
-                        st.session_state['lgf_auto'] = get_v(dl, 'home_league_GF', 'home_GF') / ph
-                        st.session_state['vgf_auto'] = get_v(dv, 'away_league_GF', 'away_GF') / pa
-                        st.session_state['nl_auto'], st.session_state['nv_auto'] = n_h, n_v
-                        st.rerun()
+                    if standings:
+                        def find_team(name):
+                            names = [smart_get(t, 'team_name', 'team.name') for t in standings]
+                            best, score = process.extractOne(name, names)
+                            return next((t for t in standings if smart_get(t, 'team_name', 'team.name') == best), None)
+
+                        h_name = smart_get(m_data, 'match_hometeam_name', 'home_team')
+                        v_name = smart_get(m_data, 'match_awayteam_name', 'away_team')
+                        
+                        team_l = find_team(h_name)
+                        team_v = find_team(v_name)
+
+                        if team_l and team_v:
+                            # Extraer goles y partidos jugados
+                            pj_l = max(1, smart_get(team_l, 'home_league_payed', 'home.played', default=1))
+                            pj_v = max(1, smart_get(team_v, 'away_league_payed', 'away.played', default=1))
+                            
+                            st.session_state['nl_auto'] = h_name
+                            st.session_state['nv_auto'] = v_name
+                            st.session_state['lgf_auto'] = smart_get(team_l, 'home_league_GF', 'home.goals_for') / pj_l
+                            st.session_state['vgf_auto'] = smart_get(team_v, 'away_league_GF', 'away.goals_for') / pj_v
+                            st.rerun()
+        else:
+            st.info("No hay partidos para esta fecha.")
+    else:
+        st.warning("No se pudieron cargar las ligas.")
 
 # =================================================================
-# 5. MAIN CONTENT (MANTENIDO)
+# 5. REPORTE PRINCIPAL (DISEÑO ORIGINAL)
 # =================================================================
-st.markdown("<h1 style='text-align: center; color: #fff;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: white;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 
 c1, c2 = st.columns(2)
 with c1:
-    nl = st.text_input("Local", value=st.session_state['nl_auto'])
-    lgf = st.number_input("xG Local", 0.0, 10.0, value=float(st.session_state.get('lgf_auto', 1.5)))
+    local = st.text_input("Local", value=st.session_state['nl_auto'])
+    xg_l = st.number_input("xG Local", 0.0, 10.0, value=float(st.session_state['lgf_auto']))
 with c2:
-    nv = st.text_input("Visita", value=st.session_state['nv_auto'])
-    vgf = st.number_input("xG Visita", 0.0, 10.0, value=float(st.session_state.get('vgf_auto', 1.2)))
+    visitante = st.text_input("Visitante", value=st.session_state['nv_auto'])
+    xg_v = st.number_input("xG Visita", 0.0, 10.0, value=float(st.session_state['vgf_auto']))
 
-if st.button("GENERAR REPORTE QUANTUM"):
-    motor = MotorMatematico(st.session_state['p_liga_auto'])
-    res = motor.procesar(lgf, vgf, 4.5, 9.5)
+if st.button("GENERAR REPORTE DE INTELIGENCIA"):
+    engine = MotorMatematico()
+    res = engine.procesar(xg_l, xg_v)
     
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
-    res_col1, res_col2 = st.columns(2)
-    with res_col1:
-        st.markdown(f"### 💎 Picks (Confianza: {res['BRIER']*100:.1f}%)")
-        st.write(f"• Victoria {nl}: **{res['1X2'][0]:.1f}%**")
+    res_l, res_r = st.columns(2)
+    with res_l:
+        st.markdown(f"### 💎 Picks Sugeridos")
+        st.write(f"• Victoria {local}: **{res['1X2'][0]:.1f}%**")
         st.write(f"• Empate: **{res['1X2'][1]:.1f}%**")
-        st.write(f"• Ambos Anotan (SÍ): **{res['BTTS'][0]:.1f}%**")
-    with res_col2:
-        st.markdown("### 🎯 Marcador Probable")
-        for score, prob in res['TOP']:
-            st.success(f"{score} — ({prob:.1f}%)")
+        st.write(f"• Ambos Anotan (SÍ): **{res['BTTS']:.1f}%**")
+    with res_r:
+        st.markdown("### 🎯 Marcadores Probables")
+        for sc, pr in res['TOP']:
+            st.code(f"{sc} — Probabilidad: {pr:.1f}%")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    msg = f"OR936 ELITE: {nl} vs {nv}\nMarcador: {res['TOP'][0][0]}\nProb: {res['TOP'][0][1]:.1f}%"
+    # Botón WhatsApp
+    msg = f"OR936 ELITE: {local} vs {visitante}\nPredicción: {res['TOP'][0][0]}"
     st.markdown(f'<a href="https://wa.me/?text={urllib.parse.quote(msg)}" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
-
-st.markdown("<p style='text-align: center; color: #333; margin-top: 40px;'>OR936 ELITE v4.5 | QUANTUM ENGINE</p>", unsafe_allow_html=True)

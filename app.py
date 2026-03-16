@@ -4,26 +4,26 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-import urllib.parse
 
 # =================================================================
-# 1. CONFIGURACIÓN API (SEGÚN DOCUMENTACIÓN THE SPORTS DB V1)
+# 1. CONFIGURACIÓN API (CON IDENTIDAD DE NAVEGADOR)
 # =================================================================
 API_KEY = "123" 
 BASE_URL = f"https://www.thesportsdb.com/api/v1/json/{API_KEY}/"
+# Engañamos a la API para que piense que somos un navegador Chrome
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-# Inicialización de estados de sesión (Persistencia de datos)
-states = {
-    'nl_auto': "Local", 'nv_auto': "Visitante",
-    'lgf_auto': 1.5, 'lgc_auto': 1.0, 
-    'vgf_auto': 1.2, 'vgc_auto': 1.3,
-    'l_badge': None, 'v_badge': None
-}
-for key, val in states.items():
-    if key not in st.session_state: st.session_state[key] = val
+if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
+if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
+if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.5
+if 'lgc_auto' not in st.session_state: st.session_state['lgc_auto'] = 1.0
+if 'vgf_auto' not in st.session_state: st.session_state['vgf_auto'] = 1.2
+if 'vgc_auto' not in st.session_state: st.session_state['vgc_auto'] = 1.3
+if 'l_badge' not in st.session_state: st.session_state['l_badge'] = None
+if 'v_badge' not in st.session_state: st.session_state['v_badge'] = None
 
 # =================================================================
-# 2. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
+# 2. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -69,7 +69,7 @@ class MotorMatematico:
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
 st.markdown("""<style>
-    .stApp { background: #05070a; color: #e0e0e0; font-family: 'Outfit', sans-serif; }
+    .stApp { background: #05070a; color: #e0e0e0; }
     .master-card { background: rgba(20,25,35,0.9); padding: 25px; border-radius: 20px; border: 1px solid #d4af3733; margin-bottom: 20px; }
     .score-badge { background: #000; padding: 10px; border-radius: 10px; border: 1px solid #d4af37; text-align: center; color: #d4af37; font-weight: 800; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; width: 100%; border-radius: 12px; height: 50px; }
@@ -79,76 +79,82 @@ with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     st.write("---")
     st.subheader("🔍 BUSCADOR DE EQUIPOS")
-    local_q = st.text_input("Equipo Local (Ej: Arsenal)")
-    visita_q = st.text_input("Equipo Visita (Ej: Liverpool)")
+    t1_q = st.text_input("Equipo Local (Ej: Real Madrid)")
+    t2_q = st.text_input("Equipo Visita (Ej: Liverpool)")
 
     if st.button("⚡ SINCRONIZAR"):
-        with st.spinner("Conectando con la API..."):
-            def fetch_team_logic(name):
+        with st.spinner("Cargando datos deportivos..."):
+            def get_team_info(name):
                 try:
-                    # Búsqueda por nombre (V1)
-                    r = requests.get(f"{BASE_URL}searchteams.php?t={name}").json()
-                    if r and r.get('teams'):
-                        team = r['teams'][0]
-                        # Obtener URL del escudo (Badge)
-                        badge_url = team.get('strBadge')
-                        if badge_url: badge_url += "/preview" # Cambiado /small por /preview para mejor compatibilidad
-                        
-                        # Obtener tabla para GF/GC
-                        table_res = requests.get(f"{BASE_URL}lookuptable.php?l={team['idLeague']}&s=2024-2025").json()
-                        if table_res and table_res.get('table'):
-                            s = next((x for x in table_res['table'] if x['idTeam'] == team['idTeam']), None)
-                            if s:
-                                pj = max(1, int(s['intPlayed']))
-                                return {'n': team['strTeam'], 'gf': int(s['intGoalsFor'])/pj, 'gc': int(s['intGoalsAgainst'])/pj, 'b': badge_url}
-                        return {'n': team['strTeam'], 'gf': 1.5, 'gc': 1.0, 'b': badge_url}
+                    # Búsqueda de equipo (Método estable de la V1)
+                    res = requests.get(f"{BASE_URL}searchteams.php?t={name}", headers=HEADERS).json()
+                    if not res or not res.get('teams'): return None
+                    
+                    team = res['teams'][0]
+                    data = {
+                        'name': team['strTeam'],
+                        'badge': team['strBadge'],
+                        'gf': 1.5, 'gc': 1.0 # Valores base si la tabla falla
+                    }
+                    
+                    # Intentamos sacar goles de la tabla (Solo ligas principales en cuenta free)
+                    table_res = requests.get(f"{BASE_URL}lookuptable.php?l={team['idLeague']}&s=2024-2025", headers=HEADERS).json()
+                    if table_res and table_res.get('table'):
+                        stats = next((x for x in table_res['table'] if x['idTeam'] == team['idTeam']), None)
+                        if stats:
+                            pj = max(1, int(stats['intPlayed']))
+                            data['gf'] = int(stats['intGoalsFor']) / pj
+                            data['gc'] = int(stats['intGoalsAgainst']) / pj
+                    return data
                 except: return None
-                return None
 
-            d1, d2 = fetch_team_logic(local_q), fetch_team_logic(visita_q)
+            d1, d2 = get_team_info(t1_q), get_team_info(t2_q)
+            if d1:
+                st.session_state.update({'nl_auto': d1['name'], 'lgf_auto': d1['gf'], 'lgc_auto': d1['gc'], 'l_badge': d1['badge']})
+            if d2:
+                st.session_state.update({'nv_auto': d2['name'], 'vgf_auto': d2['gf'], 'vgc_auto': d2['gc'], 'v_badge': d2['badge']})
+            
             if d1 or d2:
-                if d1:
-                    st.session_state['nl_auto'], st.session_state['lgf_auto'], st.session_state['lgc_auto'], st.session_state['l_badge'] = d1['n'], d1['gf'], d1['gc'], d1['b']
-                if d2:
-                    st.session_state['nv_auto'], st.session_state['vgf_auto'], st.session_state['vgc_auto'], st.session_state['v_badge'] = d2['n'], d2['gf'], d2['gc'], d2['b']
                 st.success("Sincronización terminada")
                 st.rerun()
-            else: st.error("No se encontraron datos.")
+            else:
+                st.error("No se encontraron equipos.")
 
 # CUERPO PRINCIPAL
 st.markdown("<h1 style='text-align: center;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 
-# Sección de Escudos (Independiente)
-badge_col1, badge_col2, badge_col3 = st.columns([1, 2, 1])
-with badge_col1:
-    if st.session_state['l_badge']: st.image(st.session_state['l_badge'], width=100)
-with badge_col3:
-    if st.session_state['v_badge']: st.image(st.session_state['v_badge'], width=100)
+# Sección de Escudos Optimizada
+b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
+with b_col1:
+    if st.session_state['l_badge']: st.image(st.session_state['l_badge'], width=120)
+with b_col3:
+    if st.session_state['v_badge']: st.image(st.session_state['v_badge'], width=120)
 
 st.write("---")
 
 col1, col2 = st.columns(2)
 with col1:
-    nl = st.text_input("Local", value=st.session_state['nl_auto'])
-    lgf = st.number_input("Promedio Goles L", value=st.session_state['lgf_auto'], step=0.1)
-    lgc = st.number_input("Promedio GC L", value=st.session_state['lgc_auto'], step=0.1)
+    nl = st.text_input("Equipo Local", value=st.session_state['nl_auto'])
+    lgf = st.number_input("GF Local", value=st.session_state['lgf_auto'])
+    lgc = st.number_input("GC Local", value=st.session_state['lgc_auto'])
 with col2:
-    nv = st.text_input("Visitante", value=st.session_state['nv_auto'])
-    vgf = st.number_input("Promedio Goles V", value=st.session_state['vgf_auto'], step=0.1)
-    vgc = st.number_input("Promedio GC V", value=st.session_state['vgc_auto'], step=0.1)
+    nv = st.text_input("Equipo Visitante", value=st.session_state['nv_auto'])
+    vgf = st.number_input("GF Visita", value=st.session_state['vgf_auto'])
+    vgc = st.number_input("GC Visita", value=st.session_state['vgc_auto'])
 
-media_liga = st.slider("Media Goles Liga", 1.0, 4.0, 2.5)
+p_liga = st.slider("Media de Goles de la Liga", 1.0, 4.0, 2.5)
 
 if st.button("GENERAR REPORTE QUANTUM"):
-    motor = MotorMatematico(media_liga)
-    xg_l = (lgf/media_liga)*(vgc/media_liga)*media_liga * 1.1 
-    xg_v = (vgf/media_liga)*(lgc/media_liga)*media_liga * 0.9 
+    motor = MotorMatematico(p_liga)
+    # xg_l y xg_v con factor de localía (1.1)
+    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * 1.1 
+    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * 0.9 
     res = motor.procesar(xg_l, xg_v)
     
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([2, 1])
     with v1:
-        st.subheader("💎 PICKS")
+        st.subheader("💎 PICKS SUGERIDOS")
         st.write(f"✅ **Doble Oportunidad 1X**: {res['DC'][0]:.1f}%")
         st.write(f"✅ **Ambos Anotan (SÍ)**: {res['BTTS'][0]:.1f}%")
         st.write(f"📊 **Probabilidades**: L({res['1X2'][0]:.1f}%) E({res['1X2'][1]:.1f}%) V({res['1X2'][2]:.1f}%)")
@@ -158,7 +164,7 @@ if st.button("GENERAR REPORTE QUANTUM"):
             st.markdown(f'<div class="score-badge">{score} ({prob:.1f}%)</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    fig = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Magma')
+    fig = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Turbo', labels=dict(x="Goles V", y="Goles L"))
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | THESPORTSDB ENGINE v4.5</p>", unsafe_allow_html=True)

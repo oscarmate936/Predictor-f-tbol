@@ -37,16 +37,18 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE
+# 2. FUNCIONES DE LÓGICA ELITE (BLINDADAS)
 # =================================================================
 
 def api_request_live(action, params=None):
+    """Función robusta: garantiza que siempre devuelva una lista si falla la API"""
     if params is None: params = {}
     params.update({"action": action, "APIkey": API_KEY, "_ts": time.time()})
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
-        return data if isinstance(data, (list, dict)) else []
+        # Si la API devuelve un error (dict), retornamos lista vacía para no romper el 'for'
+        return data if isinstance(data, list) else []
     except: return []
 
 @st.cache_data(ttl=300)
@@ -59,11 +61,16 @@ def api_request_cached(league_id):
     except: return []
 
 def get_lineups(match_id):
-    """Obtiene las alineaciones del partido"""
-    data = api_request_live("get_lineups", {"match_id": match_id})
-    if not data or not isinstance(data, dict): return None
-    match_key = list(data.keys())[0]
-    return data[match_key]
+    """Obtiene las alineaciones (Formaciones) del partido"""
+    # Esta petición específica sí devuelve un dict con IDs como llaves
+    try:
+        params = {"action": "get_lineups", "match_id": match_id, "APIkey": API_KEY}
+        res = requests.get(BASE_URL, params=params, timeout=10)
+        data = res.json()
+        if not data or not isinstance(data, dict): return None
+        match_key = list(data.keys())[0]
+        return data[match_key]
+    except: return None
 
 def get_fatigue_factor(team_id, match_date_str):
     last_matches = api_request_live("get_events", {
@@ -95,8 +102,8 @@ def get_market_consensus(match_id):
 def get_advanced_metrics(team_id, league_id, position):
     events = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=45)).strftime('%Y-%m-%d'), 
                                              "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
-    if not events or not isinstance(events, list): return 1.0, 1.0
-    finished = [e for e in events if e['match_status'] == 'Finished']
+    if not events: return 1.0, 1.0
+    finished = [e for e in events if e.get('match_status') == 'Finished']
     if not finished: return 1.0, 1.0
 
     momentum_gf = 0
@@ -113,28 +120,32 @@ def get_advanced_metrics(team_id, league_id, position):
 
 @st.cache_data(ttl=300)
 def get_h2h_data(team_id_l, team_id_v):
-    res = api_request_live("get_H2H", {"firstTeamId": team_id_l, "secondTeamId": team_id_v})
-    if not res or 'firstTeam' not in res: return 1.0, 1.0
-    matches = res.get('firstTeam', []) + res.get('secondTeam', [])
-    if not matches: return 1.0, 1.0
-    l_pts, v_pts = 0, 0
-    for m in matches[:6]:
-        try:
-            h_s, a_s = int(m.get('match_hometeam_score', 0)), int(m.get('match_awayteam_score', 0))
-            if h_s > a_s:
-                if m['match_hometeam_id'] == team_id_l: l_pts += 3
-                else: v_pts += 3
-            elif h_s < a_s:
-                if m['match_hometeam_id'] == team_id_l: v_pts += 3
-                else: l_pts += 3
-            else:
-                l_pts += 1; v_pts += 1
-        except: continue
-    total = l_pts + v_pts if (l_pts + v_pts) > 0 else 1
-    return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
+    # La acción H2H devuelve un dict, tratamos por separado
+    try:
+        params = {"action": "get_H2H", "firstTeamId": team_id_l, "secondTeamId": team_id_v, "APIkey": API_KEY}
+        res = requests.get(BASE_URL, params=params, timeout=10)
+        res_data = res.json()
+        if not res_data or 'firstTeam' not in res_data: return 1.0, 1.0
+        matches = res_data.get('firstTeam', []) + res_data.get('secondTeam', [])
+        if not matches: return 1.0, 1.0
+        l_pts, v_pts = 0, 0
+        for m in matches[:6]:
+            try:
+                h_s, a_s = int(m.get('match_hometeam_score', 0)), int(m.get('match_awayteam_score', 0))
+                if h_s > a_s:
+                    if m['match_hometeam_id'] == team_id_l: l_pts += 3
+                    else: v_pts += 3
+                elif h_s < a_s:
+                    if m['match_hometeam_id'] == team_id_l: v_pts += 3
+                    else: l_pts += 3
+                else: l_pts += 1; v_pts += 1
+            except: continue
+        total = l_pts + v_pts if (l_pts + v_pts) > 0 else 1
+        return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
+    except: return 1.0, 1.0
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
+# 3. MOTOR MATEMÁTICO (DIXON-COLES V4.5)
 # =================================================================
 
 class MotorMatematico:
@@ -252,7 +263,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (LOGICA DE SINCRONIZACIÓN)
+# 5. SIDEBAR (LOGICA PROTEGIDA)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -270,53 +281,58 @@ with st.sidebar:
 
     raw_events = api_request_live("get_events", {"from": f_desde, "to": f_hasta, "league_id": ligas_api[nombre_liga]})
 
-    if raw_events:
-        op_p = {f"({e['match_date']}) {e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in raw_events}
-        p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
+    if isinstance(raw_events, list) and len(raw_events) > 0:
+        # Usamos un try/except interno para mayor seguridad al mapear
+        try:
+            op_p = {f"({e['match_date']}) {e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in raw_events if 'match_hometeam_name' in e}
+            if op_p:
+                p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
 
-        if st.button("SYNC DATA"):
-            st.cache_data.clear()
-            with st.spinner("QUANTUM DEEP SYNC..."):
-                standings = api_request_cached(ligas_api[nombre_liga])
-                match_info = op_p[p_sel]
+                if st.button("SYNC DATA"):
+                    st.cache_data.clear()
+                    with st.spinner("QUANTUM DEEP SYNC..."):
+                        standings = api_request_cached(ligas_api[nombre_liga])
+                        match_info = op_p[p_sel]
 
-                if standings:
-                    h_goals = sum(int(t['home_league_GF']) for t in standings)
-                    a_goals = sum(int(t['away_league_GF']) for t in standings)
-                    total_pj = sum(int(t['overall_league_payed']) for t in standings)
-                    avg_g = (h_goals + a_goals) / (total_pj / 2) if total_pj > 0 else 2.5
-                    st.session_state['p_liga_auto'] = avg_g
-                    st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.1
+                        if standings:
+                            h_goals = sum(int(t['home_league_GF']) for t in standings)
+                            a_goals = sum(int(t['away_league_GF']) for t in standings)
+                            total_pj = sum(int(t['overall_league_payed']) for t in standings)
+                            avg_g = (h_goals + a_goals) / (total_pj / 2) if total_pj > 0 else 2.5
+                            st.session_state['p_liga_auto'] = avg_g
+                            st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.1
 
-                    def buscar(n):
-                        nombres = [t['team_name'] for t in standings]
-                        m, s = process.extractOne(n, nombres)
-                        return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
+                            def buscar(n):
+                                nombres = [t['team_name'] for t in standings]
+                                m, s = process.extractOne(n, nombres)
+                                return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
 
-                    dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
+                            dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
 
-                    if dl and dv:
-                        st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
-                        elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
-                        st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
-                        st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
-                        st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
-                        
-                        # NUEVA SINCRONIZACIÓN DE ALINEACIONES
-                        st.session_state['lineups'] = get_lineups(match_info['match_id'])
+                            if dl and dv:
+                                st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
+                                elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
+                                elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
+                                st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
+                                st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
+                                st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
+                                st.session_state['lineups'] = get_lineups(match_info['match_id'])
 
-                        ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
-                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) * 0.7 + (mom_l * 0.3)
-                        st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/ph if ph>0 else 1.0)
-                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pa if pa>0 else 1.2) * 0.7 + (mom_v * 0.3)
-                        st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
-                        st.session_state['elo_bias'] = (elo_l, elo_v)
-                        st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
+                                ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
+                                st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) * 0.7 + (mom_l * 0.3)
+                                st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/ph if ph>0 else 1.0)
+                                st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pa if pa>0 else 1.2) * 0.7 + (mom_v * 0.3)
+                                st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
+                                st.session_state['elo_bias'] = (elo_l, elo_v)
+                                st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-                        recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
-                        st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]
-                        st.rerun()
+                                recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
+                                st.session_state['audit_results'] = [e for e in recent_league if e.get('match_status') == 'Finished'][-5:]
+                                st.rerun()
+            else: st.warning("No hay datos de equipos disponibles.")
+        except Exception: st.error("Error al procesar eventos de la API.")
+    else:
+        st.info("No hay partidos programados o error de conexión.")
 
 # =================================================================
 # 6. CONTENIDO PRINCIPAL
@@ -339,7 +355,6 @@ with col_v:
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, key='vtj_auto'), vb.number_input("Corners V", 0.0, 20.0, key='vco_auto')
 
-st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto')
 
 b_ex, b_wa = st.columns([3, 1])
@@ -347,95 +362,49 @@ with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga)
-    hfa = st.session_state['hfa_league']
-    h2h_l, h2h_v = st.session_state['h2h_bias']
-    elo_l, elo_v = st.session_state['elo_bias']
-    f_l, f_v = st.session_state['fatiga_l'], st.session_state['fatiga_v']
+    hfa, (h2h_l, h2h_v), (elo_l, elo_v), f_l, f_v = st.session_state['hfa_league'], st.session_state['h2h_bias'], st.session_state['elo_bias'], st.session_state['fatiga_l'], st.session_state['fatiga_v']
 
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l * f_l
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * elo_v * f_v
 
     res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
-    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
-    for line, p in res['GOLES'].items():
-        if 1.5 <= line <= 3.5:
-            pool.append({"t": f"Over {line} Goles", "p": p[0]})
-            pool.append({"t": f"Under {line} Goles", "p": p[1]})
-    sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
-    msg = f"*OR936 QUANTUM ELITE*\n⚽ {nl_manual} vs {nv_manual}\n\n*PICKS:*\n"
-    for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
-    encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
-    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
+    sug = sorted([{"t": "1X", "p": res['DC'][0]}, {"t": "X2", "p": res['DC'][1]}, {"t": "Ambos Anotan", "p": res['BTTS'][0]}] + 
+                 [{"t": f"Over {l}", "p": res['GOLES'][l][0]} for l in [1.5, 2.5]], key=lambda x: x['p'], reverse=True)[:6]
+    
+    encoded_msg = urllib.parse.quote(f"Picks: {nl_manual} vs {nv_manual}\nScore: {res['TOP'][0][0]}")
+    with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR</a>', unsafe_allow_html=True)
+    
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
-        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
-        for s in sug:
-            clase = "elite-alert" if s['p'] > 85 else ""
-            st.markdown(f'<div class="verdict-item {clase}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES ({res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
+        for s in sug: st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
     with v2:
-        st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
-        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 SCORE</h4>", unsafe_allow_html=True)
+        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} ({prob:.1f}%)</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "🛡️ ALINEACIONES", "📈 AUDITORÍA"])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "🛡️ FORMACIÓN", "📈 AUDITORÍA"])
     with t1:
-        ga, gb = st.columns(2); 
-        with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
-        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    with t2:
-        ha, hb = st.columns(2)
-        with ha:
-            st.markdown(f"<h5 style='color:var(--secondary);'>{nl_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
-        with hb:
-            st.markdown(f"<h5 style='color:var(--primary);'>{nv_manual}</h5>", unsafe_allow_html=True)
-            for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
-    with t3:
-        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-    with t4:
-        ta, co = st.columns(2)
-        with ta:
-            st.markdown("<h5 style='color:#ff4b4b; text-align:center;'>PROYECCIÓN DE TARJETAS</h5>", unsafe_allow_html=True)
-            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
-        with co:
-            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>PROYECCIÓN DE CORNER</h5>", unsafe_allow_html=True)
-            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
-    with t5:
-        df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
-        fig = px.imshow(df_matriz, labels=dict(x=f"Goles Visitante", y=f"Goles Local", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
-        fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
-        st.plotly_chart(fig, use_container_width=True)
+        ga, gb = st.columns(2)
+        with ga: 
+            for l in [1.5, 2.5, 3.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
+        with gb: dual_bar_explicit("BTTS: SI", res['BTTS'][0], "BTTS: NO", res['BTTS'][1], color="#d4af37")
     with t6:
-        st.markdown("<h4 style='color:var(--secondary);'>🛡️ FORMACIONES Y PLANTILLA</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:var(--secondary);'>🛡️ ALINEACIONES</h4>", unsafe_allow_html=True)
         lineups = st.session_state['lineups']
-        if lineups and ('lineup' in lineups):
-            col_la, col_va = st.columns(2)
-            for side, col, color, name in [('home', col_la, 'var(--secondary)', nl_manual), ('away', col_va, 'var(--primary)', nv_manual)]:
+        if lineups and 'lineup' in lineups:
+            cla, cva = st.columns(2)
+            for side, col, color, name in [('home', cla, 'var(--secondary)', nl_manual), ('away', cva, 'var(--primary)', nv_manual)]:
                 with col:
-                    team_lineup = lineups['lineup'][side]
-                    system = team_lineup.get('system', 'N/A')
-                    st.markdown(f"<div style='text-align:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid {color};'><b>{name} - {system}</b></div>", unsafe_allow_html=True)
-                    st.markdown("<br><b>TITULARES:</b>", unsafe_allow_html=True)
-                    for p in team_lineup.get('starting_lineups', []):
-                        st.markdown(f"<div style='font-size:0.9em; border-bottom:1px solid #222; padding:3px 0;'>👕 {p['lineup_number']} - {p['lineup_player']} <small style='color:#666'>({p['lineup_position']})</small></div>", unsafe_allow_html=True)
-                    if team_lineup.get('missing_players'):
-                        st.markdown("<br><b style='color:#ff4b4b;'>AUSENCIAS:</b>", unsafe_allow_html=True)
-                        for mp in team_lineup['missing_players']:
-                            st.markdown(f"<div style='font-size:0.85em; color:#ff4b4b;'>❌ {mp['lineup_player']}</div>", unsafe_allow_html=True)
-        else: st.info("Alineaciones no disponibles todavía para este encuentro. Se recomienda sincronizar 60 min antes del inicio.")
+                    team = lineups['lineup'][side]
+                    st.markdown(f"<div style='text-align:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid {color};'><b>{name} - {team.get('system', 'N/A')}</b></div>", unsafe_allow_html=True)
+                    for p in team.get('starting_lineups', []):
+                        st.markdown(f"<div style='font-size:0.85em; border-bottom:1px solid #222;'>{p['lineup_number']} {p['lineup_player']}</div>", unsafe_allow_html=True)
+        else: st.info("Alineaciones no disponibles.")
     with t7:
-        st.markdown("<h5 style='color:var(--primary);'>VERIFICACIÓN DE PRECISIÓN RECIENTE</h5>", unsafe_allow_html=True)
         if st.session_state['audit_results']:
             for m in st.session_state['audit_results']:
-                st.markdown(f"""<div style='background:rgba(255,255,255,0.03); padding:10px; border-radius:10px; margin-bottom:5px; border-left:3px solid #444;'>
-                <small>{m['match_date']}</small><br>
-                <b>{m['match_hometeam_name']} {m['match_hometeam_score']} - {m['match_awayteam_score']} {m['match_awayteam_name']}</b>
-                </div>""", unsafe_allow_html=True)
-        else: st.info("Sincroniza datos para ver la auditoría de la liga.")
+                st.markdown(f"<small>{m['match_date']}</small> - {m['match_hometeam_name']} {m['match_hometeam_score']}-{m['match_awayteam_score']} {m['match_awayteam_name']}", unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MARKET CONSENSUS | OR936 ELITE v4.5</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v4.5 | QUANTUM ENGINE</p>", unsafe_allow_html=True)

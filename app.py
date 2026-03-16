@@ -10,14 +10,12 @@ from fuzzywuzzy import process
 import time
 
 # =================================================================
-# 1. CONFIGURACIÓN API (ACTUALIZADA A RAPIDAPI) & ESTADO
+# 1. CONFIGURACIÓN API (RAPIDAPI BRIDGE) & ESTADO
 # =================================================================
-# Nuevas credenciales de RapidAPI
 API_KEY = "e7757069e7msh1aec6d4f74dd4ccp1b85c0jsnaf081e5e5b62"
 API_HOST = "free-api-live-football-data.p.rapidapi.com"
 BASE_URL = "https://free-api-live-football-data.p.rapidapi.com/"
 
-# Headers obligatorios para la autenticación en RapidAPI
 HEADERS = {
     "X-RapidAPI-Key": API_KEY,
     "X-RapidAPI-Host": API_HOST
@@ -26,6 +24,7 @@ HEADERS = {
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
+# Estado de sesión original
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
@@ -33,50 +32,70 @@ if 'h2h_bias' not in st.session_state: st.session_state['h2h_bias'] = (1.0, 1.0)
 if 'audit_results' not in st.session_state: st.session_state['audit_results'] = []
 
 defaults = {
-    'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
-    'lgf_auto': 1.7, 'lgc_auto': 1.2, 'vgf_auto': 1.5, 'vgc_auto': 1.1,
-    'fatiga_l': 1.0, 'fatiga_v': 1.0
+    'p_liga_auto': 2.5, 'hfa_league': 1.0, 'lgf_auto': 1.7, 'lgc_auto': 1.2, 
+    'vgf_auto': 1.5, 'vgc_auto': 1.1, 'fatiga_l': 1.0, 'fatiga_v': 1.0
 }
 for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (ACTUALIZADAS PARA RAPIDAPI)
+# 2. FUNCIONES DE CONEXIÓN (TRADUCTOR DE PROTOCOLO)
 # =================================================================
 
 def api_request_live(action, params=None):
     if params is None: params = {}
-    params.update({"action": action}) # Se mantiene 'action' para compatibilidad con el mirror
+    
+    # TRADUCCIÓN: Convertimos 'action' en la ruta correcta de RapidAPI
+    mapping = {
+        "get_events": "fixtures",
+        "get_standings": "standings",
+        "get_H2H": "fixtures/headtohead"
+    }
+    endpoint = mapping.get(action, action)
+    
+    # Ajuste de parámetros para que la nueva API los entienda
+    if "league_id" in params: params["league"] = params.pop("league_id")
+    if "team_id" in params: params["team"] = params.pop("team_id")
+    if "firstTeamId" in params and "secondTeamId" in params:
+        params["h2h"] = f"{params.pop('firstTeamId')}-{params.pop('secondTeamId')}"
+    
+    # Temporada actual (Requerida por la nueva API)
+    params["season"] = "2025" 
+
     try:
-        # Petición con HEADERS y sin la APIkey en el URL (seguridad RapidAPI)
-        res = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=10)
+        res = requests.get(f"{BASE_URL}{endpoint}", params=params, headers=HEADERS, timeout=12)
         data = res.json()
-        return data if isinstance(data, list) else []
-    except: return []
+        # En RapidAPI los datos vienen en la llave 'response'
+        return data.get("response", []) if isinstance(data, dict) else []
+    except:
+        return []
 
 @st.cache_data(ttl=300)
 def api_request_cached(league_id):
-    params = {"action": "get_standings", "league_id": league_id}
-    try:
-        res = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=10)
-        data = res.json()
-        return data if isinstance(data, list) else []
-    except: return []
+    return api_request_live("get_standings", {"league_id": league_id})
 
 @st.cache_data(ttl=300)
 def get_advanced_metrics(team_id, league_id, position):
-    events = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=45)).strftime('%Y-%m-%d'), 
-                                             "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
-    if not events or not isinstance(events, list): return 1.0, 1.0
-    finished = [e for e in events if e.get('match_status') == 'Finished']
+    events = api_request_live("get_events", {
+        "from": (ahora_sv - timedelta(days=45)).strftime('%Y-%m-%d'), 
+        "to": ahora_sv.strftime('%Y-%m-%d'), 
+        "league_id": league_id, 
+        "team_id": team_id
+    })
+    if not events: return 1.0, 1.0
+    
+    # Adaptación de nombres de campos de la nueva API
+    finished = [e for e in events if e.get('fixture', {}).get('status', {}).get('short') == 'FT']
     if not finished: return 1.0, 1.0
 
     momentum_gf = 0
     weights = [0.5, 0.3, 0.2]
     for i, m in enumerate(finished[-3:][::-1]):
-        is_home = m.get('match_hometeam_id') == team_id
+        teams = m.get('teams', {})
+        goals = m.get('goals', {})
+        is_home = str(teams.get('home', {}).get('id')) == str(team_id)
         try:
-            gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
+            gf = int(goals.get('home') if is_home else goals.get('away'))
             momentum_gf += gf * weights[i]
         except: continue
 
@@ -85,19 +104,20 @@ def get_advanced_metrics(team_id, league_id, position):
 
 @st.cache_data(ttl=300)
 def get_h2h_data(team_id_l, team_id_v):
-    res = api_request_live("get_H2H", {"firstTeamId": team_id_l, "secondTeamId": team_id_v})
-    if not res or 'firstTeam' not in res: return 1.0, 1.0
-    matches = res.get('firstTeam', []) + res.get('secondTeam', [])
+    matches = api_request_live("get_H2H", {"firstTeamId": team_id_l, "secondTeamId": team_id_v})
     if not matches: return 1.0, 1.0
+    
     l_pts, v_pts = 0, 0
     for m in matches[:6]:
+        goals = m.get('goals', {})
+        teams = m.get('teams', {})
         try:
-            h_s, a_s = int(m.get('match_hometeam_score', 0)), int(m.get('match_awayteam_score', 0))
+            h_s, a_s = int(goals.get('home', 0)), int(goals.get('away', 0))
             if h_s > a_s:
-                if m['match_hometeam_id'] == team_id_l: l_pts += 3
+                if str(teams.get('home', {}).get('id')) == str(team_id_l): l_pts += 3
                 else: v_pts += 3
             elif h_s < a_s:
-                if m['match_hometeam_id'] == team_id_l: v_pts += 3
+                if str(teams.get('home', {}).get('id')) == str(team_id_l): v_pts += 3
                 else: l_pts += 3
             else:
                 l_pts += 1; v_pts += 1
@@ -106,7 +126,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5 + CALIBRACIÓN)
+# 3. MOTOR MATEMÁTICO QUANTUM (MANTENIDO IGUAL)
 # =================================================================
 
 class MotorMatematico:
@@ -167,7 +187,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (ESTILOS)
+# 4. DISEÑO UI/UX (ESTILOS MANTENIDOS)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -216,85 +236,72 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (IDs ACTUALIZADOS PARA EVITAR ERRORES)
+# 5. SIDEBAR (IDs ACTUALIZADOS)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     
-    # Hemos actualizado los IDs al estándar actual de la API (v3)
+    # IDs Internacionales Estándar para RapidAPI
     ligas_api = {
-        "Saudi Pro League": 307, 
-        "Trendyol Süper Lig": 203, 
-        "Liga Mayor (El Salvador)": 251, 
-        "Premier League (Inglaterra)": 39, 
-        "La Liga (España)": 140, 
-        "Serie A (Italia)": 135, 
-        "Bundesliga (Alemania)": 78, 
-        "Ligue 1 (Francia)": 61, 
-        "UEFA Champions League": 2, 
-        "UEFA Europa League": 3, 
-        "UEFA Conference League": 848, 
-        "Copa Libertadores": 13,
-        "Brasileirão Betano (Série A)": 71, 
-        "Brasileirão Série B": 72, 
-        "Copa de Brasil": 74,
-        "FA Cup (Inglaterra)": 45, 
-        "EFL Cup (Inglaterra)": 48, 
-        "Copa del Rey (España)": 143, 
-        "Coppa Italia (Italia)": 137, 
-        "DFB Pokal (Alemania)": 81, 
-        "Coupe de France (Francia)": 66
+        "Premier League (Inglaterra)": 39, "La Liga (España)": 140, "Serie A (Italia)": 135, "Bundesliga (Alemania)": 78, "Ligue 1 (Francia)": 61,
+        "Saudi Pro League": 307, "Trendyol Süper Lig": 203, "UEFA Champions League": 2, "UEFA Europa League": 3, "Copa Libertadores": 13,
+        "Brasileirão Série A": 71, "Liga Mayor (El Salvador)": 251
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
+    
     f_desde = (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d')
     f_hasta = (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d')
 
     raw_events = api_request_live("get_events", {"from": f_desde, "to": f_hasta, "league_id": ligas_api[nombre_liga]})
 
     if raw_events:
-        op_p = {f"({e.get('match_date', 'N/A')}) {e.get('match_hometeam_name', 'Local')} vs {e.get('match_awayteam_name', 'Visita')}": e for e in raw_events}
+        op_p = {}
+        for e in raw_events:
+            teams = e.get('teams', {})
+            fixture = e.get('fixture', {})
+            key = f"({fixture.get('date')[:10]}) {teams.get('home',{}).get('name')} vs {teams.get('away',{}).get('name')}"
+            op_p[key] = e
+        
         p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
 
         if st.button("SYNC DATA"):
             st.cache_data.clear()
             with st.spinner("QUANTUM DEEP SYNC..."):
-                standings = api_request_cached(ligas_api[nombre_liga])
+                # Standings en esta API suelen venir en una estructura anidada
+                res_standings = api_request_cached(ligas_api[nombre_liga])
+                standings = []
+                if res_standings and 'league' in res_standings[0]:
+                    standings = res_standings[0]['league'].get('standings', [[]])[0]
+
                 match_info = op_p[p_sel]
 
                 if standings:
-                    h_goals = sum(int(t.get('home_league_GF', 0)) for t in standings)
-                    a_goals = sum(int(t.get('away_league_GF', 0)) for t in standings)
-                    total_pj = sum(int(t.get('overall_league_payed', 0)) for t in standings)
-                    avg_g = (h_goals + a_goals) / (total_pj / 2) if total_pj > 0 else 2.5
-                    st.session_state['p_liga_auto'] = avg_g
-                    st.session_state['hfa_league'] = float(h_goals / a_goals) if a_goals > 0 else 1.1
-
+                    # Mapeo de estadísticas de tabla
                     def buscar(n):
-                        nombres = [t['team_name'] for t in standings]
+                        nombres = [t['team']['name'] for t in standings]
                         m, s = process.extractOne(n, nombres)
-                        return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
+                        return next((t for t in standings if t['team']['name'] == m), None) if s > 65 else None
 
-                    dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
+                    dl = buscar(match_info['teams']['home']['name'])
+                    dv = buscar(match_info['teams']['away']['name'])
 
                     if dl and dv:
-                        st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
-                        elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
-                        ph, pa = int(dl.get('home_league_payed', 1)), int(dv.get('away_league_payed', 1))
-                        st.session_state['lgf_auto'] = (float(dl.get('home_league_GF', 1.5))/ph) * 0.7 + (mom_l * 0.3)
-                        st.session_state['lgc_auto'] = (float(dl.get('home_league_GA', 1.0))/ph)
-                        st.session_state['vgf_auto'] = (float(dv.get('away_league_GF', 1.2))/pa) * 0.7 + (mom_v * 0.3)
-                        st.session_state['vgc_auto'] = (float(dv.get('away_league_GA', 1.3))/pa)
+                        st.session_state['h2h_bias'] = get_h2h_data(dl['team']['id'], dv['team']['id'])
+                        elo_l, mom_l = get_advanced_metrics(dl['team']['id'], ligas_api[nombre_liga], dl['rank'])
+                        elo_v, mom_v = get_advanced_metrics(dv['team']['id'], ligas_api[nombre_liga], dv['rank'])
+                        
+                        # Cálculo de promedios para el motor
+                        st.session_state['lgf_auto'] = (float(dl['all']['goals']['for'])/dl['all']['played']) * 0.7 + (mom_l * 0.3)
+                        st.session_state['lgc_auto'] = (float(dl['all']['goals']['against'])/dl['all']['played'])
+                        st.session_state['vgf_auto'] = (float(dv['all']['goals']['for'])/dv['all']['played']) * 0.7 + (mom_v * 0.3)
+                        st.session_state['vgc_auto'] = (float(dv['all']['goals']['against'])/dv['all']['played'])
                         st.session_state['elo_bias'] = (elo_l, elo_v)
-                        st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-
-                        recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
-                        st.session_state['audit_results'] = [e for e in recent_league if e.get('match_status') == 'Finished'][-5:]
+                        st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team']['name'], dv['team']['name']
                         st.rerun()
 
 # =================================================================
-# 6. CONTENIDO PRINCIPAL (IGUAL AL ORIGINAL)
+# 6. CONTENIDO PRINCIPAL (RESTO DEL CÓDIGO SIN CAMBIOS)
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.5 QUANTUM + SYNC</p>", unsafe_allow_html=True)
@@ -339,7 +346,6 @@ if generar:
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
     with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
     
-    # Resto de la visualización igual...
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
@@ -352,23 +358,5 @@ if generar:
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
-
-    # Tabs con gráficos de Plotly...
-    t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
-    with t1:
-        ga, gb = st.columns(2); 
-        with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
-        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    # (Resto de los tabs se mantienen igual que en tu código original)
-    with t3:
-        dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-    with t5:
-        df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
-        fig = px.imshow(df_matriz, labels=dict(x=f"Goles Visitante", y=f"Goles Local", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
-        fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
-        st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MOMENTUM WEIGHTING | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

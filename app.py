@@ -26,6 +26,7 @@ if 'audit_results' not in st.session_state: st.session_state['audit_results'] = 
 if 'fatiga_l' not in st.session_state: st.session_state['fatiga_l'] = 1.0
 if 'fatiga_v' not in st.session_state: st.session_state['fatiga_v'] = 1.0
 if 'market_bias' not in st.session_state: st.session_state['market_bias'] = None
+if 'lineups' not in st.session_state: st.session_state['lineups'] = None
 
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
@@ -36,7 +37,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (MEJORADAS)
+# 2. FUNCIONES DE LÓGICA ELITE
 # =================================================================
 
 def api_request_live(action, params=None):
@@ -45,7 +46,7 @@ def api_request_live(action, params=None):
     try:
         res = requests.get(BASE_URL, params=params, timeout=10)
         data = res.json()
-        return data if isinstance(data, list) else []
+        return data if isinstance(data, (list, dict)) else []
     except: return []
 
 @st.cache_data(ttl=300)
@@ -57,8 +58,14 @@ def api_request_cached(league_id):
         return data if isinstance(data, list) else []
     except: return []
 
+def get_lineups(match_id):
+    """Obtiene las alineaciones del partido"""
+    data = api_request_live("get_lineups", {"match_id": match_id})
+    if not data or not isinstance(data, dict): return None
+    match_key = list(data.keys())[0]
+    return data[match_key]
+
 def get_fatigue_factor(team_id, match_date_str):
-    """Calcula el factor de fatiga basado en días de descanso"""
     last_matches = api_request_live("get_events", {
         "from": (datetime.strptime(match_date_str, '%Y-%m-%d') - timedelta(days=10)).strftime('%Y-%m-%d'),
         "to": (datetime.strptime(match_date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d'),
@@ -69,17 +76,15 @@ def get_fatigue_factor(team_id, match_date_str):
         last_date = datetime.strptime(last_matches[-1]['match_date'], '%Y-%m-%d')
         target_date = datetime.strptime(match_date_str, '%Y-%m-%d')
         days_off = (target_date - last_date).days
-        if days_off <= 3: return 0.92  # Penalización por poco descanso
-        if days_off >= 7: return 1.05  # Bonus por frescura
+        if days_off <= 3: return 0.92
+        if days_off >= 7: return 1.05
         return 1.0
     except: return 1.0
 
 def get_market_consensus(match_id):
-    """Obtiene probabilidad implícita de las cuotas para calibrar el modelo"""
     odds = api_request_live("get_odds", {"match_id": match_id})
     if not odds: return None
     try:
-        # Buscamos cuotas 1X2 (usualmente en la primera entrada disponible)
         o = odds[0]
         o1, ox, o2 = float(o['odd_1']), float(o['odd_x']), float(o['odd_2'])
         margin = (1/o1) + (1/ox) + (1/o2)
@@ -174,10 +179,8 @@ class MotorMatematico:
 
         total = max(0.0001, p1 + px + p2)
 
-        # Integración de Sesgo de Mercado si existe
         if st.session_state['market_bias']:
             m1, mx, m2 = st.session_state['market_bias']
-            # Ponderación: 75% Modelo Matemático, 25% Sabiduría del Mercado
             p1 = (p1/total * 0.75) + (m1 * 0.25)
             px = (px/total * 0.75) + (mx * 0.25)
             p2 = (p2/total * 0.75) + (m2 * 0.25)
@@ -200,7 +203,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (SIN CAMBIOS)
+# 4. DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -249,7 +252,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (LOGICA DE SINCRONIZACIÓN MEJORADA)
+# 5. SIDEBAR (LOGICA DE SINCRONIZACIÓN)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -296,13 +299,12 @@ with st.sidebar:
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
                         elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
                         elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
-
-                        # CALCULO DE FATIGA AUTOMÁTICO
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
-
-                        # SESGO DE MERCADO (ODDS)
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
+                        
+                        # NUEVA SINCRONIZACIÓN DE ALINEACIONES
+                        st.session_state['lineups'] = get_lineups(match_info['match_id'])
 
                         ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
                         st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) * 0.7 + (mom_l * 0.3)
@@ -312,13 +314,12 @@ with st.sidebar:
                         st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-                        # Capturar auditoría
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
                         st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]
                         st.rerun()
 
 # =================================================================
-# 6. CONTENIDO PRINCIPAL (SIN CAMBIOS VISUALES)
+# 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.5 QUANTUM + SYNC</p>", unsafe_allow_html=True)
@@ -349,8 +350,6 @@ if generar:
     hfa = st.session_state['hfa_league']
     h2h_l, h2h_v = st.session_state['h2h_bias']
     elo_l, elo_v = st.session_state['elo_bias']
-
-    # INTEGRACIÓN DE FACTORES DE FATIGA EN EL XG
     f_l, f_v = st.session_state['fatiga_l'], st.session_state['fatiga_v']
 
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l * f_l
@@ -380,7 +379,7 @@ if generar:
     st.markdown('</div>', unsafe_allow_html=True)
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
-    t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "🛡️ ALINEACIONES", "📈 AUDITORÍA"])
     with t1:
         ga, gb = st.columns(2); 
         with ga:
@@ -412,6 +411,24 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
     with t6:
+        st.markdown("<h4 style='color:var(--secondary);'>🛡️ FORMACIONES Y PLANTILLA</h4>", unsafe_allow_html=True)
+        lineups = st.session_state['lineups']
+        if lineups and ('lineup' in lineups):
+            col_la, col_va = st.columns(2)
+            for side, col, color, name in [('home', col_la, 'var(--secondary)', nl_manual), ('away', col_va, 'var(--primary)', nv_manual)]:
+                with col:
+                    team_lineup = lineups['lineup'][side]
+                    system = team_lineup.get('system', 'N/A')
+                    st.markdown(f"<div style='text-align:center; background:rgba(255,255,255,0.05); padding:10px; border-radius:10px; border:1px solid {color};'><b>{name} - {system}</b></div>", unsafe_allow_html=True)
+                    st.markdown("<br><b>TITULARES:</b>", unsafe_allow_html=True)
+                    for p in team_lineup.get('starting_lineups', []):
+                        st.markdown(f"<div style='font-size:0.9em; border-bottom:1px solid #222; padding:3px 0;'>👕 {p['lineup_number']} - {p['lineup_player']} <small style='color:#666'>({p['lineup_position']})</small></div>", unsafe_allow_html=True)
+                    if team_lineup.get('missing_players'):
+                        st.markdown("<br><b style='color:#ff4b4b;'>AUSENCIAS:</b>", unsafe_allow_html=True)
+                        for mp in team_lineup['missing_players']:
+                            st.markdown(f"<div style='font-size:0.85em; color:#ff4b4b;'>❌ {mp['lineup_player']}</div>", unsafe_allow_html=True)
+        else: st.info("Alineaciones no disponibles todavía para este encuentro. Se recomienda sincronizar 60 min antes del inicio.")
+    with t7:
         st.markdown("<h5 style='color:var(--primary);'>VERIFICACIÓN DE PRECISIÓN RECIENTE</h5>", unsafe_allow_html=True)
         if st.session_state['audit_results']:
             for m in st.session_state['audit_results']:

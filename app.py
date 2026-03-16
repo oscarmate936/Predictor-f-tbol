@@ -6,29 +6,32 @@ import plotly.express as px
 import requests
 
 # =================================================================
-# 1. CONFIGURACIÓN API (IDS ACTUALIZADOS A THESPORTSDB)
+# 1. CONFIGURACIÓN API (TOTALMENTE AJUSTADA A KEY 123)
 # =================================================================
 API_KEY = "123" 
 BASE_URL = f"https://www.thesportsdb.com/api/v1/json/{API_KEY}/"
 
-# Mapeo de IDs reales de TheSportsDB para evitar errores
+# IDs correctos de TheSportsDB
 LIGAS_IDS = {
-    "Premier League (UK)": "4328",
-    "La Liga (ES)": "4335",
-    "Serie A (IT)": "4332",
-    "Bundesliga (DE)": "4331",
-    "Ligue 1 (FR)": "4334",
-    "Brasileirão (BR)": "4351",
-    "Liga Mayor (ES)": "4645",
-    "Saudi Pro League": "4622"
+    "Premier League (Inglaterra)": "4328",
+    "La Liga (España)": "4335",
+    "Serie A (Italia)": "4332",
+    "Bundesliga (Alemania)": "4331",
+    "Ligue 1 (Francia)": "4334",
+    "Liga Mayor (El Salvador)": "4645",
+    "Brasileirão (Brasil)": "4351"
 }
 
-# Inicialización de estados
-for key, val in {'nl_auto': "Local", 'nv_auto': "Visitante", 'lgf_auto': 1.5, 'lgc_auto': 1.0, 'vgf_auto': 1.2, 'vgc_auto': 1.3}.items():
-    if key not in st.session_state: st.session_state[key] = val
+# Inicializar memoria del programa
+if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
+if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
+if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.5
+if 'lgc_auto' not in st.session_state: st.session_state['lgc_auto'] = 1.0
+if 'vgf_auto' not in st.session_state: st.session_state['vgf_auto'] = 1.2
+if 'vgc_auto' not in st.session_state: st.session_state['vgc_auto'] = 1.3
 
 # =================================================================
-# 2. MOTOR MATEMÁTICO QUANTUM (SIN CAMBIOS EN LÓGICA)
+# 2. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -69,49 +72,70 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 3. INTERFAZ Y SYNC DE DATOS
+# 3. INTERFAZ Y LÓGICA DE SINCRONIZACIÓN
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
 st.markdown("""<style>
-    .stApp { background: #05070a; color: #e0e0e0; }
+    .stApp { background: #05070a; color: #e0e0e0; font-family: 'Outfit', sans-serif; }
     .master-card { background: rgba(20,25,35,0.9); padding: 25px; border-radius: 20px; border: 1px solid #d4af3733; }
     .score-badge { background: #000; padding: 10px; border-radius: 10px; border: 1px solid #d4af37; text-align: center; color: #d4af37; font-weight: 800; }
-    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; width: 100%; border-radius: 12px; }
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; width: 100%; border-radius: 12px; height: 50px; }
 </style>""", unsafe_allow_html=True)
 
 with st.sidebar:
-    st.title("GOLD TERMINAL")
-    liga_nombre = st.selectbox("Seleccionar Liga", list(LIGAS_IDS.keys()))
-    l_id = LIGAS_IDS[liga_nombre]
+    st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
+    st.write("---")
+    
+    liga_sel = st.selectbox("1. Elige la Competición", list(LIGAS_IDS.keys()))
+    id_liga = LIGAS_IDS[liga_sel]
     
     st.write("---")
-    t1_q = st.text_input("Equipo Local", placeholder="Ej: Real Madrid")
-    t2_q = st.text_input("Equipo Visitante", placeholder="Ej: Barcelona")
+    st.subheader("2. Busca los Equipos")
+    nombre_l = st.text_input("Equipo Local", placeholder="Ej: Real Madrid o Alianza")
+    nombre_v = st.text_input("Equipo Visita", placeholder="Ej: Barcelona o FAS")
 
-    if st.button("⚡ SYNC QUANTUM"):
-        with st.spinner("Buscando IDs y Estadísticas..."):
-            # 1. Traer la tabla de la liga seleccionada
-            res = requests.get(f"{BASE_URL}lookuptable.php?l={l_id}&s=2024-2025").json()
-            if res and res.get('table'):
-                table = res['table']
-                # Buscar equipos en la tabla (case insensitive)
-                stats_l = next((t for t in table if t1_q.lower() in t['strTeam'].lower()), None)
-                stats_v = next((t for t in table if t2_q.lower() in t['strTeam'].lower()), None)
+    if st.button("⚡ SYNC DATA"):
+        with st.spinner("Conectando con TheSportsDB..."):
+            try:
+                # Paso A: Intentar buscar equipos por nombre (Método más estable en la llave 123)
+                def buscar_equipo(q):
+                    r = requests.get(f"{BASE_URL}searchteams.php?t={q}").json()
+                    return r['teams'][0] if r and r.get('teams') else None
 
-                if stats_l and stats_v:
-                    pj_l, pj_v = max(1, int(stats_l['intPlayed'])), max(1, int(stats_v['intPlayed']))
-                    st.session_state.update({
-                        'nl_auto': stats_l['strTeam'], 'nv_auto': stats_v['strTeam'],
-                        'lgf_auto': int(stats_l['intGoalsFor'])/pj_l, 'lgc_auto': int(stats_l['intGoalsAgainst'])/pj_l,
-                        'vgf_auto': int(stats_v['intGoalsFor'])/pj_v, 'vgc_auto': int(stats_v['intGoalsAgainst'])/pj_v
-                    })
-                    st.success("Sincronización Exitosa")
+                t1, t2 = buscar_equipo(nombre_l), buscar_equipo(nombre_v)
+
+                if t1 and t2:
+                    st.session_state['nl_auto'] = t1['strTeam']
+                    st.session_state['nv_auto'] = t2['strTeam']
+                    
+                    # Paso B: Intentar traer la tabla para los goles (Si la llave 123 lo permite)
+                    # Temporada 2024-2025 es la más estable ahora
+                    tabla_res = requests.get(f"{BASE_URL}lookuptable.php?l={id_liga}&s=2024-2025").json()
+                    
+                    if tabla_res and tabla_res.get('table'):
+                        def extract(tid, table):
+                            s = next((x for x in table if x['idTeam'] == tid), None)
+                            if s:
+                                pj = max(1, int(s['intPlayed']))
+                                return int(s['intGoalsFor'])/pj, int(s['intGoalsAgainst'])/pj
+                            return 1.5, 1.0
+                        
+                        l_gf, l_gc = extract(t1['idTeam'], tabla_res['table'])
+                        v_gf, v_gc = extract(t2['idTeam'], tabla_res['table'])
+                        
+                        st.session_state['lgf_auto'] = l_gf
+                        st.session_state['lgc_auto'] = l_gc
+                        st.session_state['vgf_auto'] = v_gf
+                        st.session_state['vgc_auto'] = v_gc
+                        st.success("Sincronización Completa: Nombres y Goles.")
+                    else:
+                        st.warning("Nombres encontrados, pero la tabla de goles está bloqueada por la API gratuita. Por favor, ingresa los promedios manualmente.")
                     st.rerun()
                 else:
-                    st.error("No se encontraron los equipos en esta liga. Revisa el nombre.")
-            else:
-                st.error("La API no devolvió datos para esta liga (Límite Free).")
+                    st.error("No se encontraron los equipos. Prueba escribiendo el nombre exacto.")
+            except Exception as e:
+                st.error("Error de conexión con la API.")
 
 # PANTALLA PRINCIPAL
 st.markdown("<h1 style='text-align: center;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
@@ -119,18 +143,19 @@ st.markdown("<h1 style='text-align: center;'>OR936 <span style='color:#d4af37'>E
 col1, col2 = st.columns(2)
 with col1:
     nl = st.text_input("Local", value=st.session_state['nl_auto'])
-    lgf = st.number_input("Promedio Goles L", value=st.session_state['lgf_auto'])
+    lgf = st.number_input("Promedio Goles L", value=st.session_state['lgf_auto'], step=0.1)
+    lgc = st.number_input("Promedio Goles Contra L", value=st.session_state['lgc_auto'], step=0.1)
 with col2:
     nv = st.text_input("Visita", value=st.session_state['nv_auto'])
-    vgf = st.number_input("Promedio Goles V", value=st.session_state['vgf_auto'])
+    vgf = st.number_input("Promedio Goles V", value=st.session_state['vgf_auto'], step=0.1)
+    vgc = st.number_input("Promedio Goles Contra V", value=st.session_state['vgc_auto'], step=0.1)
 
-media_liga = st.slider("Media de Goles de la Liga", 1.0, 4.0, 2.5)
+media_liga = st.slider("Media Goles Liga", 1.0, 4.0, 2.5)
 
-if st.button("GENERAR REPORTE"):
+if st.button("GENERAR REPORTE QUANTUM"):
     motor = MotorMatematico(media_liga)
-    # xg_l y xg_v simplificados para el reporte
-    xg_l = (lgf / media_liga) * media_liga * 1.1
-    xg_v = (vgf / media_liga) * media_liga * 0.9
+    xg_l = (lgf / media_liga) * (vgc / media_liga) * media_liga * 1.1 
+    xg_v = (vgf / media_liga) * (lgc / media_liga) * media_liga * 0.9 
     res = motor.procesar(xg_l, xg_v)
     
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
@@ -146,4 +171,6 @@ if st.button("GENERAR REPORTE"):
             st.markdown(f'<div class="score-badge">{score} ({prob:.1f}%)</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    st.plotly_chart(px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Inferno'), use_container_width=True)
+    st.plotly_chart(px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='YlGnBu'), use_container_width=True)
+
+st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | THESPORTSDB ENGINE v4.5 | KEY: 123 MODE</p>", unsafe_allow_html=True)

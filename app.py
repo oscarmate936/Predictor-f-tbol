@@ -4,15 +4,15 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import requests
-import urllib.parse
 
 # =================================================================
-# 1. CONFIGURACIÓN API (THESPORTSDB - FORMATO VERIFICADO)
+# 1. CONFIGURACIÓN SEGÚN EL TUTORIAL (API V1)
 # =================================================================
+# Tal como dice tu tutorial: "https://www.thesportsdb.com/api/v1/json/123/..."
 API_KEY = "123" 
 BASE_URL = f"https://www.thesportsdb.com/api/v1/json/{API_KEY}/"
 
-# Mantener los datos en memoria para que no se borren al tocar botones
+# Guardar datos para que no se borren al interactuar
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'lgf_auto' not in st.session_state: st.session_state['lgf_auto'] = 1.5
@@ -21,7 +21,7 @@ if 'vgf_auto' not in st.session_state: st.session_state['vgf_auto'] = 1.2
 if 'vgc_auto' not in st.session_state: st.session_state['vgc_auto'] = 1.3
 
 # =================================================================
-# 2. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
+# 2. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES)
 # =================================================================
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
@@ -29,7 +29,6 @@ class MotorMatematico:
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
-        # Probabilidad de Poisson para el cálculo de goles
         return (lam**k * math.exp(-lam)) / math.factorial(k)
 
     def dixon_coles_ajuste(self, x, y, lam, mu):
@@ -63,7 +62,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 3. INTERFAZ Y LÓGICA DE DATOS (EL "TRADUCTOR")
+# 3. INTERFAZ (UI) Y LÓGICA DE DATOS
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -71,33 +70,28 @@ st.markdown("""<style>
     .stApp { background: #05070a; color: #e0e0e0; }
     .master-card { background: rgba(20,25,35,0.9); padding: 25px; border-radius: 20px; border: 1px solid #d4af3733; margin-bottom: 20px; }
     .score-badge { background: #000; padding: 10px; border-radius: 10px; border: 1px solid #d4af37; text-align: center; color: #d4af37; font-weight: 800; margin-bottom: 5px; }
-    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; width: 100%; border-radius: 10px; }
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; width: 100%; border-radius: 12px; }
 </style>""", unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown("<h2 style='color:#d4af37; text-align:center;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
+    st.title("GOLD TERMINAL")
     st.write("---")
-    st.subheader("🔍 BUSCAR EQUIPOS")
-    t1_input = st.text_input("Local", placeholder="Ej: Arsenal")
-    t2_input = st.text_input("Visita", placeholder="Ej: Liverpool")
+    st.subheader("🔍 BUSCADOR DE EQUIPOS")
+    t1_q = st.text_input("Equipo Local (Ej: Arsenal)")
+    t2_q = st.text_input("Equipo Visita (Ej: Liverpool)")
 
     if st.button("⚡ SINCRONIZAR"):
-        with st.spinner("Leyendo las letras de la API..."):
-            def get_data(name):
+        with st.spinner("Conectando con la API..."):
+            def get_stats(name):
                 try:
-                    # Usamos la misma URL que probaste en el navegador
-                    url = f"{BASE_URL}searchteams.php?t={name}"
-                    r = requests.get(url).json()
+                    # Ejemplo idéntico al tutorial: searchteams.php?t=
+                    r = requests.get(f"{BASE_URL}searchteams.php?t={name}").json()
                     if r and r.get('teams'):
                         team = r['teams'][0]
-                        l_id = team['idLeague']
-                        t_id = team['idTeam']
-                        
-                        # Buscamos la tabla para sacar los goles
-                        t_url = f"{BASE_URL}lookuptable.php?l={l_id}&s=2024-2025"
-                        tr = requests.get(t_url).json()
+                        # Buscar la tabla para obtener goles promedio
+                        tr = requests.get(f"{BASE_URL}lookuptable.php?l={team['idLeague']}&s=2024-2025").json()
                         if tr and tr.get('table'):
-                            s = next((x for x in tr['table'] if x['idTeam'] == t_id), None)
+                            s = next((x for x in tr['table'] if x['idTeam'] == team['idTeam']), None)
                             if s:
                                 pj = max(1, int(s['intPlayed']))
                                 return {'n': team['strTeam'], 'gf': int(s['intGoalsFor'])/pj, 'gc': int(s['intGoalsAgainst'])/pj}
@@ -105,33 +99,33 @@ with st.sidebar:
                 except: return None
                 return None
 
-            d1, d2 = get_data(t1_input), get_data(t2_input)
-            if d1 and d2:
-                st.session_state.update({'nl_auto': d1['n'], 'nv_auto': d2['n'], 'lgf_auto': d1['gf'], 'lgc_auto': d1['gc'], 'vgf_auto': d2['gf'], 'vgc_auto': d2['gc']})
-                st.success("¡Datos traducidos correctamente!")
+            res1, res2 = get_stats(t1_q), get_stats(t2_q)
+            if res1 and res2:
+                st.session_state.update({'nl_auto': res1['n'], 'nv_auto': res2['name'] if 'name' in res2 else res2['n'], 
+                                        'lgf_auto': res1['gf'], 'lgc_auto': res1['gc'], 'vgf_auto': res2['gf'], 'vgc_auto': res2['gc']})
+                st.success("¡Sincronización completa!")
                 st.rerun()
-            else:
-                st.error("No se pudo leer la información. Verifica los nombres.")
+            else: st.error("No se encontraron datos.")
 
 # CUERPO PRINCIPAL
 st.markdown("<h1 style='text-align: center;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 with col1:
-    nl = st.text_input("Equipo Local", value=st.session_state['nl_auto'])
-    lgf = st.number_input("GF Local", value=st.session_state['lgf_auto'], step=0.1)
-    lgc = st.number_input("GC Local", value=st.session_state['lgc_auto'], step=0.1)
+    nl = st.text_input("Local", value=st.session_state['nl_auto'])
+    lgf = st.number_input("Goles Favor L", value=st.session_state['lgf_auto'])
+    lgc = st.number_input("Goles Contra L", value=st.session_state['lgc_auto'])
 with col2:
-    nv = st.text_input("Equipo Visita", value=st.session_state['nv_auto'])
-    vgf = st.number_input("GF Visita", value=st.session_state['vgf_auto'], step=0.1)
-    vgc = st.number_input("GC Visita", value=st.session_state['vgc_auto'], step=0.1)
+    nv = st.text_input("Visitante", value=st.session_state['nv_auto'])
+    vgf = st.number_input("Goles Favor V", value=st.session_state['vgf_auto'])
+    vgc = st.number_input("Goles Contra V", value=st.session_state['vgc_auto'])
 
-p_liga = st.slider("Media Goles Liga", 1.0, 4.0, 2.5)
+media_liga = st.slider("Media de Goles de la Liga", 1.0, 4.0, 2.5)
 
 if st.button("GENERAR PREDICCIÓN QUANTUM"):
-    motor = MotorMatematico(p_liga)
-    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * 1.1 
-    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * 0.9 
+    motor = MotorMatematico(media_liga)
+    xg_l = (lgf/media_liga)*(vgc/media_liga)*media_liga * 1.1 
+    xg_v = (vgf/media_liga)*(lgc/media_liga)*media_liga * 0.9 
     res = motor.procesar(xg_l, xg_v)
     
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
@@ -139,8 +133,7 @@ if st.button("GENERAR PREDICCIÓN QUANTUM"):
     with v1:
         st.subheader("💎 PICKS")
         st.write(f"✅ **Doble Oportunidad 1X**: {res['DC'][0]:.1f}%")
-        st.write(f"✅ **Doble Oportunidad X2**: {res['DC'][1]:.1f}%")
-        st.write(f"✅ **Ambos Anotan (SÍ)**: {res['BTTS'][0]:.1f}%")
+        st.write(f"✅ **Ambos Anotan**: {res['BTTS'][0]:.1f}%")
         st.write(f"📊 **Probabilidades**: L({res['1X2'][0]:.1f}%) E({res['1X2'][1]:.1f}%) V({res['1X2'][2]:.1f}%)")
     with v2:
         st.subheader("🎯 MARCADORES")
@@ -148,7 +141,7 @@ if st.button("GENERAR PREDICCIÓN QUANTUM"):
             st.markdown(f'<div class="score-badge">{score} ({prob:.1f}%)</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    fig = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Hot', labels=dict(x="Goles V", y="Goles L"))
+    fig = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Turbo')
     st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | THESPORTSDB ENGINE v4.5</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center; color:#333;'>SYSTEM AUTHENTICATED | THESPORTSDB API V1</p>", unsafe_allow_html=True)

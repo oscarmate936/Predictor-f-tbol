@@ -24,6 +24,7 @@ if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
 if 'h2h_bias' not in st.session_state: st.session_state['h2h_bias'] = (1.0, 1.0)
 if 'audit_results' not in st.session_state: st.session_state['audit_results'] = []
+if 'standings_data' not in st.session_state: st.session_state['standings_data'] = []
 if 'fatiga_l' not in st.session_state: st.session_state['fatiga_l'] = 1.0
 if 'fatiga_v' not in st.session_state: st.session_state['fatiga_v'] = 1.0
 if 'market_bias' not in st.session_state: st.session_state['market_bias'] = None
@@ -140,7 +141,7 @@ class MotorMatematico:
         elif x == 1 and y == 1: return 1 - self.rho
         return 1.0
 
-    def procesar(self, xg_l, xg_v, tj_total, co_total):
+    def procesar(self, xg_l, xg_v, tj_total=4.5, co_total=9.5):
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
@@ -167,15 +168,8 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
 
         total = max(0.0001, p1 + px + p2)
-        if st.session_state['market_bias']:
-            m1, mx, m2 = st.session_state['market_bias']
-            p1 = (p1/total * 0.75) + (m1 * 0.25)
-            px = (px/total * 0.75) + (mx * 0.25)
-            p2 = (p2/total * 0.75) + (m2 * 0.25)
-            total = p1 + px + p2
-
-        sim_tj = np.random.poisson(tj_total, 15000)
-        sim_co = np.random.poisson(co_total, 15000)
+        sim_tj = np.random.poisson(tj_total, 1000)
+        sim_co = np.random.poisson(co_total, 1000)
 
         return {
             "1X2": (p1/total*100, px/total*100, p2/total*100), 
@@ -183,8 +177,8 @@ class MotorMatematico:
             "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
             "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
             "HANDICAPS": {"L": {h: v/total*100 for h,v in h_probs_l.items()}, "V": {h: v/total*100 for h,v in h_probs_v.items()}},
-            "TARJETAS": {t: (np.sum(sim_tj > t)/150, np.sum(sim_tj <= t)/150) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
-            "CORNERS": {t: (np.sum(sim_co > t)/150, np.sum(sim_co <= t)/150) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
+            "TARJETAS": {t: (np.sum(sim_tj > t)/10, np.sum(sim_tj <= t)/10) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
+            "CORNERS": {t: (np.sum(sim_co > t)/10, np.sum(sim_co <= t)/10) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
             "MATRIZ": matriz, "BRIER": 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         }
@@ -204,6 +198,8 @@ st.markdown("""
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
     .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
     .form-pill { font-size: 0.9em; letter-spacing: 3px; margin-top: 8px; }
+    .audit-hit { border-left: 5px solid #00ffa3 !important; background: rgba(0, 255, 163, 0.05) !important; }
+    .audit-miss { border-left: 5px solid #ff4b4b !important; background: rgba(255, 75, 75, 0.05) !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -260,6 +256,7 @@ with st.sidebar:
                 standings = api_request_cached(ligas_api[nombre_liga])
                 match_info = op_p[p_sel]
                 if standings:
+                    st.session_state['standings_data'] = standings
                     def buscar(n):
                         nombres = [t['team_name'] for t in standings]
                         m, s = process.extractOne(n, nombres)
@@ -289,7 +286,7 @@ with st.sidebar:
 # 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.8 + SYNC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.85 + BACKTESTING</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -306,12 +303,11 @@ with col_v:
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
     vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, key='vtj_auto'), vb.number_input("Corners V", 0.0, 20.0, key='vco_auto')
 
-st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto')
 
 if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     motor = MotorMatematico(league_avg=p_liga)
-    hfa, (h2h_l, h2h_v), f_l, f_v = 1.18, st.session_state['h2h_bias'], st.session_state['fatiga_l'], st.session_state['fatiga_v']
+    hfa, h2h_l, h2h_v, f_l, f_v = 1.18, st.session_state['h2h_bias'][0], st.session_state['h2h_bias'][1], st.session_state['fatiga_l'], st.session_state['fatiga_v']
     
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * f_l
     xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * f_v
@@ -341,47 +337,66 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         with ga:
             for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    
     with t2:
         ha, hb = st.columns(2)
         with ha:
             for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"L {h:+}", p, "", 100-p, color="#00ffa3")
         with hb:
             for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"V {h:+}", p, "", 100-p, color="#d4af37")
-            
     with t3:
         dual_bar_explicit(f"1X ({nl_manual} o X)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
         dual_bar_explicit(f"X2 ({nv_manual} o X)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
         dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-        
     with t4:
         ta, co = st.columns(2)
         with ta:
             for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
         with co:
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
-            
     with t5:
-        fig_m = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Greens', labels=dict(x="Visitante", y="Local"))
-        st.plotly_chart(fig_m, use_container_width=True)
-        
+        st.plotly_chart(px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Greens'), use_container_width=True)
     with t6:
-        # RADAR COMPARATIVO ELITE
-        categories = ['Ataque', 'Defensa', 'Fuerza H2H', 'Fatiga', 'Momentum']
+        categories = ['Ataque', 'Defensa', 'H2H', 'Fatiga', 'Momentum']
         fig_r = go.Figure()
         fig_r.add_trace(go.Scatterpolar(r=[lgf*20, (3-lgc)*20, h2h_l*80, f_l*90, 85], theta=categories, fill='toself', name=nl_manual, line_color='#00ffa3'))
         fig_r.add_trace(go.Scatterpolar(r=[vgf*20, (3-vgc)*20, h2h_v*80, f_v*90, 70], theta=categories, fill='toself', name=nv_manual, line_color='#d4af37'))
-        fig_r.update_layout(polar=dict(radialaxis=dict(visible=False), bgcolor='rgba(0,0,0,0)'), paper_bgcolor='rgba(0,0,0,0)', font=dict(color="#fff", size=14))
+        fig_r.update_layout(polar=dict(radialaxis=dict(visible=False), bgcolor='rgba(0,0,0,0)'), paper_bgcolor='rgba(0,0,0,0)', font=dict(color="#fff"))
         st.plotly_chart(fig_r, use_container_width=True)
-        
     with t7:
-        st.markdown("<h5 style='color:var(--primary);'>VERIFICACIÓN DE PRECISIÓN RECIENTE</h5>", unsafe_allow_html=True)
-        if st.session_state['audit_results']:
+        st.markdown("<h5 style='color:var(--primary);'>SIMULACIÓN DE BACKTESTING (Últimos 5 partidos)</h5>", unsafe_allow_html=True)
+        if st.session_state['audit_results'] and st.session_state['standings_data']:
+            audit_motor = MotorMatematico(league_avg=p_liga)
+            aciertos = 0
             for m in st.session_state['audit_results']:
-                st.markdown(f"""<div style='background:rgba(255,255,255,0.03); padding:10px; border-radius:10px; margin-bottom:5px; border-left:3px solid #444;'>
-                <small>{m['match_date']}</small><br>
-                <b>{m['match_hometeam_name']} {m['match_hometeam_score']} - {m['match_awayteam_score']} {m['match_awayteam_name']}</b>
-                </div>""", unsafe_allow_html=True)
-        else: st.info("Sincroniza datos para ver la auditoría de la liga.")
+                # Backtesting Logic: Simular resultado basado en el motor
+                def get_s(n):
+                    res = process.extractOne(n, [t['team_name'] for t in st.session_state['standings_data']])
+                    return next(t for t in st.session_state['standings_data'] if t['team_name'] == res[0])
+                
+                try:
+                    sl, sv = get_s(m['match_hometeam_name']), get_s(m['match_awayteam_name'])
+                    pxg_l = (float(sl['home_league_GF'])/max(1,int(sl['home_league_payed'])))/p_liga * (float(sv['away_league_GA'])/max(1,int(sv['away_league_payed'])))/p_liga * p_liga * 1.15
+                    pxg_v = (float(sv['away_league_GF'])/max(1,int(sv['away_league_payed'])))/p_liga * (float(sl['home_league_GA'])/max(1,int(sl['home_league_payed'])))/p_liga * p_liga * 0.85
+                    sim = audit_motor.procesar(pxg_l, pxg_v)
+                    
+                    real_h, real_a = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
+                    pred_res = "1" if sim['1X2'][0] > sim['1X2'][1] and sim['1X2'][0] > sim['1X2'][2] else ("X" if sim['1X2'][1] > sim['1X2'][0] and sim['1X2'][1] > sim['1X2'][2] else "2")
+                    real_res = "1" if real_h > real_a else ("X" if real_h == real_a else "2")
+                    
+                    hit = pred_res == real_res
+                    if hit: aciertos += 1
+                    status_cls = "audit-hit" if hit else "audit-miss"
+                    
+                    st.markdown(f"""<div class='{status_cls}' style='padding:12px; border-radius:10px; margin-bottom:8px; background:rgba(255,255,255,0.02);'>
+                    <div style='display:flex; justify-content:space-between;'>
+                        <span><b>{m['match_hometeam_name']} {real_h} - {real_a} {m['match_awayteam_name']}</b></span>
+                        <span style='color:{"#00ffa3" if hit else "#ff4b4b"}'>{'✅ ACIERTO' if hit else '❌ FALLO'}</span>
+                    </div>
+                    <small style='color:#666;'>Simulación: {sim['TOP'][0][0]} | Prob. Ganar: {max(sim['1X2']):.1f}%</small>
+                    </div>""", unsafe_allow_html=True)
+                except: continue
+            
+            st.metric("Tasa de Precisión de la Liga (Simulada)", f"{(aciertos/5)*100:.0f}%")
+        else: st.info("Sincroniza datos para activar el Backtesting.")
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v4.8 | BRIER CALIBRATION & AUDIT SYSTEM</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v4.85 | SYSTEM AUTHENTICATED</p>", unsafe_allow_html=True)

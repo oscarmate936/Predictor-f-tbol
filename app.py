@@ -79,7 +79,6 @@ def get_market_consensus(match_id):
     odds = api_request_live("get_odds", {"match_id": match_id})
     if not odds: return None
     try:
-        # Buscamos cuotas 1X2 (usualmente en la primera entrada disponible)
         o = odds[0]
         o1, ox, o2 = float(o['odd_1']), float(o['odd_x']), float(o['odd_2'])
         margin = (1/o1) + (1/ox) + (1/o2)
@@ -174,10 +173,8 @@ class MotorMatematico:
 
         total = max(0.0001, p1 + px + p2)
 
-        # Integración de Sesgo de Mercado si existe
         if st.session_state['market_bias']:
             m1, mx, m2 = st.session_state['market_bias']
-            # Ponderación: 75% Modelo Matemático, 25% Sabiduría del Mercado
             p1 = (p1/total * 0.75) + (m1 * 0.25)
             px = (px/total * 0.75) + (mx * 0.25)
             p2 = (p2/total * 0.75) + (m2 * 0.25)
@@ -200,7 +197,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (SIN CAMBIOS)
+# 4. DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -249,7 +246,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (LOGICA DE SINCRONIZACIÓN MEJORADA)
+# 5. SIDEBAR
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -296,12 +293,8 @@ with st.sidebar:
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
                         elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
                         elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
-
-                        # CALCULO DE FATIGA AUTOMÁTICO
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
-
-                        # SESGO DE MERCADO (ODDS)
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
 
                         ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
@@ -312,13 +305,12 @@ with st.sidebar:
                         st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-                        # Capturar auditoría
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
                         st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]
                         st.rerun()
 
 # =================================================================
-# 6. CONTENIDO PRINCIPAL (SIN CAMBIOS VISUALES)
+# 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.5 QUANTUM + SYNC</p>", unsafe_allow_html=True)
@@ -349,8 +341,6 @@ if generar:
     hfa = st.session_state['hfa_league']
     h2h_l, h2h_v = st.session_state['h2h_bias']
     elo_l, elo_v = st.session_state['elo_bias']
-
-    # INTEGRACIÓN DE FACTORES DE FATIGA EN EL XG
     f_l, f_v = st.session_state['fatiga_l'], st.session_state['fatiga_v']
 
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l * f_l
@@ -411,14 +401,64 @@ if generar:
         fig = px.imshow(df_matriz, labels=dict(x=f"Goles Visitante", y=f"Goles Local", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
+    
+    # --- PESTAÑA DE AUDITORÍA INTEGRADA ---
     with t6:
-        st.markdown("<h5 style='color:var(--primary);'>VERIFICACIÓN DE PRECISIÓN RECIENTE</h5>", unsafe_allow_html=True)
+        st.markdown("<h5 style='color:var(--primary); margin-bottom:20px;'>ANÁLISIS DE VOLATILIDAD Y TENDENCIA RECIENTE</h5>", unsafe_allow_html=True)
+        
         if st.session_state['audit_results']:
-            for m in st.session_state['audit_results']:
-                st.markdown(f"""<div style='background:rgba(255,255,255,0.03); padding:10px; border-radius:10px; margin-bottom:5px; border-left:3px solid #444;'>
-                <small>{m['match_date']}</small><br>
-                <b>{m['match_hometeam_name']} {m['match_hometeam_score']} - {m['match_awayteam_score']} {m['match_awayteam_name']}</b>
-                </div>""", unsafe_allow_html=True)
-        else: st.info("Sincroniza datos para ver la auditoría de la liga.")
+            # --- CÁLCULOS DE TENDENCIA ---
+            matches = st.session_state['audit_results']
+            total = len(matches)
+            goles_totales = sum(int(m['match_hometeam_score']) + int(m['match_awayteam_score']) for m in matches)
+            promedio_reciente = goles_totales / total
+            over25 = sum(1 for m in matches if (int(m['match_hometeam_score']) + int(m['match_awayteam_score'])) > 2.5)
+            btts = sum(1 for m in matches if int(m['match_hometeam_score']) > 0 and int(m['match_awayteam_score']) > 0)
+            victorias_L = sum(1 for m in matches if int(m['match_hometeam_score']) > int(m['match_awayteam_score']))
+
+            # --- HEADER DE MÉTRICAS ---
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Goles Avg (5pj)", f"{promedio_reciente:.2f}", f"{promedio_reciente - p_liga:.2f} vs Liga")
+            m2.metric("% Over 2.5", f"{(over25/total)*100:.0f}%")
+            m3.metric("% BTTS", f"{(btts/total)*100:.0f}%")
+            m4.metric("% Victoria L", f"{(victorias_L/total)*100:.0f}%")
+
+            st.markdown("<hr style='border: 0.5px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+
+            # --- SISTEMA AUTOMÁTICO DE RECOMENDACIÓN ---
+            desviacion = promedio_reciente - p_liga
+            if abs(desviacion) > 0.2:
+                accion = "SUBIR" if desviacion > 0 else "BAJAR"
+                color_rec = "#00ffa3" if desviacion > 0 else "#ff4b4b"
+                st.markdown(f"""
+                <div style='background:rgba(212,175,55,0.1); padding:15px; border-radius:12px; border:1px solid var(--primary); margin-bottom:20px;'>
+                    <b style='color:var(--primary);'>⚠️ RECOMENDACIÓN DE CALIBRACIÓN:</b><br>
+                    La liga está siendo más {'goleadora' if desviacion > 0 else 'cerrada'} de lo configurado. 
+                    Se recomienda <span style='color:{color_rec}; font-weight:bold;'>{accion}</span> la Media de la Liga a <b>{promedio_reciente:.2f}</b> para mayor precisión.
+                </div>
+                """, unsafe_allow_html=True)
+
+            # --- LISTADO ESTILIZADO CON BADGES ---
+            for m in matches:
+                h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
+                is_over = "🔥 O2.5" if (h_s + v_s) > 2.5 else "🧊 U2.5"
+                is_btts = "✅ BTTS" if (h_s > 0 and v_s > 0) else "❌ No BTTS"
+                
+                st.markdown(f"""
+                <div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:12px; margin-bottom:10px; border: 1px solid rgba(212,175,55,0.1); display: flex; justify-content: space-between; align-items: center;'>
+                    <div style='flex: 2;'>
+                        <small style='color:#666;'>{m['match_date']}</small><br>
+                        <b style='font-size:1.1em;'>{m['match_hometeam_name']} <span style='color:var(--secondary);'>{h_s} - {v_s}</span> {m['match_awayteam_name']}</b>
+                    </div>
+                    <div style='flex: 1; text-align: right;'>
+                        <span style='background:#111; padding:4px 8px; border-radius:6px; font-size:0.75em; border: 1px solid #333; margin-right:5px;'>{is_over}</span>
+                        <span style='background:#111; padding:4px 8px; border-radius:6px; font-size:0.75em; border: 1px solid #333;'>{is_btts}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.caption(f"Nota: Desviación actual del modelo vs realidad: {abs(promedio_reciente - p_liga):.2f} goles.")
+        else: 
+            st.info("Sincroniza datos para ver la auditoría de la liga.")
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MARKET CONSENSUS | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

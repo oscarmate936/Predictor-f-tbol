@@ -355,7 +355,7 @@ if generar:
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
     with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
-    
+
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
@@ -367,7 +367,7 @@ if generar:
         st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-    
+
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
@@ -401,55 +401,112 @@ if generar:
         fig = px.imshow(df_matriz, labels=dict(x=f"Goles Visitante", y=f"Goles Local", color="% Prob."), color_continuous_scale=['#05070a', '#1a332d', '#00ffa3', '#d4af37'], text_auto=".1f", aspect="equal")
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
-        
-    # --- PESTAÑA AUDITORÍA REDISEÑADA ---
+
+    # --- PESTAÑA AUDITORÍA PROFESIONAL v4.5 ---
     with t6:
         st.markdown("""
             <div style='background: linear-gradient(90deg, #0a0c10 0%, #141923 100%); padding: 20px; border-radius: 15px; border-left: 5px solid #d4af37; margin-bottom: 25px;'>
-                <h3 style='color:#fff; margin:0;'>REPORTE DE BACKTESTING <span style='color:#d4af37; font-size:0.6em;'>v4.5 LIVE</span></h3>
-                <p style='color:#666; font-size:0.9em; margin:0;'>Validación de precisión del motor Quantum sobre los últimos 5 encuentros.</p>
+                <h3 style='color:#fff; margin:0;'>BACKTESTING DE PRECISIÓN <span style='color:#d4af37; font-size:0.6em;'>QUANTUM ENGINE</span></h3>
+                <p style='color:#666; font-size:0.9em; margin:0;'>Validación exacta de las sugerencias (70%-98%) generadas frente a resultados finales.</p>
             </div>
         """, unsafe_allow_html=True)
-        
+
         if st.session_state['audit_results']:
             matches = st.session_state['audit_results']
             total_hits = 0
-            total_picks = 0
-            audit_cards = []
+            total_picks_count = 0
+            audit_data_list = []
 
+            # Función interna para verificar si un pick se cumplió
+            def verificar_resultado_real(pick_text, h_s, v_s):
+                total_g = h_s + v_s
+                if "Over" in pick_text:
+                    line = float(pick_text.split(" ")[1])
+                    return total_g > line
+                if "Under" in pick_text:
+                    line = float(pick_text.split(" ")[1])
+                    return total_g < line
+                if "Doble Oportunidad 1X" in pick_text: return h_s >= v_s
+                if "Doble Oportunidad X2" in pick_text: return v_s >= h_s
+                if "Mercado 12" in pick_text: return h_s != v_s
+                if "Ambos Anotan: SÍ" in pick_text: return h_s > 0 and v_s > 0
+                return False
+
+            standings = api_request_cached(ligas_api[nombre_liga])
+            
             for m in matches:
-                h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
-                test_motor = MotorMatematico(league_avg=p_liga)
-                txg_l, txg_v = (lgf/p_liga) * p_liga, (vgf/p_liga) * p_liga
-                back_res = test_motor.procesar(txg_l, txg_v, ltj+vtj, lco+vco)
-                
-                sim_picks = [
-                    {"t": "Over 2.5", "p": back_res['GOLES'][2.5][0], "hit": (h_s + v_s) > 2.5},
-                    {"t": "BTTS: SÍ", "p": back_res['BTTS'][0], "hit": (h_s > 0 and v_s > 0)},
-                    {"t": "Local/Empate", "p": back_res['DC'][0], "hit": (h_s >= v_s)},
-                    {"t": "Visita/Empate", "p": back_res['DC'][1], "hit": (v_s >= h_s)}
-                ]
-                
-                top_sim_picks = sorted([p for p in sim_picks], key=lambda x: x['p'], reverse=True)[:2]
-                pick_html = ""
-                for ps in top_sim_picks:
-                    total_picks += 1
-                    badge = f"<span style='color:#00ffa3; background:rgba(0,255,163,0.1); padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #00ffa3;'>✓ HIT</span>" if ps['hit'] else f"<span style='color:#ff4b4b; background:rgba(255,75,75,0.1); padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #ff4b4b;'>✗ MISS</span>"
-                    if ps['hit']: total_hits += 1
-                    pick_html += f"<div style='margin-top:5px;'>{badge} <small>{ps['t']} ({ps['p']:.0f}%)</small></div>"
+                try:
+                    h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
+                    
+                    # 1. Reconstruir estadísticas para el motor Quantum de ese partido
+                    def buscar_t(n):
+                        nombres = [t['team_name'] for t in standings]
+                        res_f = process.extractOne(n, nombres)
+                        return next((t for t in standings if t['team_name'] == res_f[0]), None) if res_f[1] > 70 else None
+                    
+                    dtl, dtv = buscar_t(m['match_hometeam_name']), buscar_t(m['match_awayteam_name'])
+                    
+                    if dtl and dtv:
+                        # Simular inputs del motor
+                        ph, pa = int(dtl['home_league_payed']), int(dtv['away_league_payed'])
+                        slgf = (float(dtl['home_league_GF'])/ph if ph>0 else 1.5)
+                        slgc = (float(dtl['home_league_GA'])/ph if ph>0 else 1.0)
+                        svgf = (float(dtv['away_league_GF'])/pa if pa>0 else 1.2)
+                        svgc = (float(dtv['away_league_GA'])/pa if pa>0 else 1.3)
+                        
+                        # Ejecutar motor Dixon-Coles
+                        txg_l = (slgf/p_liga)*(svgc/p_liga)*p_liga * hfa
+                        txg_v = (svgf/p_liga)*(slgc/p_liga)*p_liga * (1/hfa)
+                        
+                        back_res = motor.procesar(txg_l, txg_v, 4.0, 9.5) # Valores base
+                        
+                        # Generar exactamente la misma lista de picks que el reporte principal
+                        pool_back = [
+                            {"t": "Doble Oportunidad 1X", "p": back_res['DC'][0]},
+                            {"t": "Doble Oportunidad X2", "p": back_res['DC'][1]},
+                            {"t": "Mercado 12", "p": back_res['DC'][2]},
+                            {"t": "Ambos Anotan: SÍ", "p": back_res['BTTS'][0]}
+                        ]
+                        for line, p_vals in back_res['GOLES'].items():
+                            if 1.5 <= line <= 3.5:
+                                pool_back.append({"t": f"Over {line} Goles", "p": p_vals[0]})
+                                pool_back.append({"t": f"Under {line} Goles", "p": p_vals[1]})
+                        
+                        # Filtrar picks de alta confianza (70-98%)
+                        sug_back = sorted([s for s in pool_back if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+                        
+                        pick_html = ""
+                        for ps in sug_back:
+                            is_hit = verificar_resultado_real(ps['t'], h_s, v_s)
+                            total_picks_count += 1
+                            if is_hit: total_hits += 1
+                            
+                            color = "#00ffa3" if is_hit else "#ff4b4b"
+                            icon = "✓" if is_hit else "✗"
+                            pick_html += f"""
+                                <div style='margin-bottom:4px; font-size:0.85em;'>
+                                    <span style='color:{color}; font-weight:bold;'>{icon}</span> 
+                                    <span style='color:#ccc;'>{ps['t']}</span> 
+                                    <span style='color:#666;'>({ps['p']:.1f}%)</span>
+                                </div>"""
 
-                audit_cards.append({"date": m['match_date'], "teams": f"{m['match_hometeam_name']} <span style='color:#d4af37;'>{h_s} - {v_s}</span> {m['match_awayteam_name']}", "picks": pick_html})
+                        audit_data_list.append({
+                            "date": m['match_date'],
+                            "match": f"{m['match_hometeam_name']} {h_s} - {v_s} {m['match_awayteam_name']}",
+                            "picks": pick_html
+                        })
+                except: continue
 
-            accuracy = (total_hits / total_picks * 100) if total_picks > 0 else 0
+            accuracy = (total_hits / total_picks_count * 100) if total_picks_count > 0 else 0
             c1, c2, c3 = st.columns(3)
-            with c1: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PRECISIÓN DE PICKS</small><br><b style='font-size:1.8em; color:#00ffa3;'>{accuracy:.1f}%</b></div>", unsafe_allow_html=True)
-            with c2: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>MUESTRA ANALIZADA</small><br><b style='font-size:1.8em; color:#fff;'>{len(matches)} <span style='font-size:0.5em;'>PJ</span></b></div>", unsafe_allow_html=True)
-            with c3: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>FACTOR VOLATILIDAD</small><br><b style='font-size:1.8em; color:#d4af37;'>{abs(accuracy-80)/10:.1f} <span style='font-size:0.5em;'>σ</span></b></div>", unsafe_allow_html=True)
+            with c1: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PRECISIÓN ELITE</small><br><b style='font-size:1.8em; color:#00ffa3;'>{accuracy:.1f}%</b></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PICKS AUDITADOS</small><br><b style='font-size:1.8em; color:#fff;'>{total_picks_count}</b></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>MUESTRA DE PARTIDOS</small><br><b style='font-size:1.8em; color:#d4af37;'>{len(audit_data_list)}</b></div>", unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
-            for card in audit_cards:
-                st.markdown(f"""<div style='display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05);'><div style='flex: 1;'><small style='color:#555; font-family:JetBrains Mono;'>{card['date']}</small><br><b style='font-size:1.05em;'>{card['teams']}</b></div><div style='flex: 1; text-align: right; border-left: 1px solid #222; padding-left: 15px;'><small style='color:#888; text-transform:uppercase; font-size:0.7em; letter-spacing:1px;'>Verificación Quantum</small>{card['picks']}</div></div>""", unsafe_allow_html=True)
+            for item in audit_data_list:
+                st.markdown(f"""<div style='display: flex; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); align-items: center;'><div style='flex: 1.2;'><small style='color:#555; font-family:JetBrains Mono;'>{item['date']}</small><br><b style='color:#eee;'>{item['match']}</b></div><div style='flex: 1; border-left: 1px solid #222; padding-left: 20px;'>{item['picks']}</div></div>""", unsafe_allow_html=True)
         else:
-            st.warning("⚠️ No hay datos históricos suficientes para realizar el backtesting. Sincroniza la liga primero.")
+            st.warning("⚠️ Sincroniza una liga primero para realizar la auditoría de precisión.")
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MARKET CONSENSUS | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

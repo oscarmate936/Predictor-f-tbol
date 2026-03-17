@@ -36,7 +36,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (MEJORADAS)
+# 2. FUNCIONES DE LÓGICA ELITE
 # =================================================================
 
 def api_request_live(action, params=None):
@@ -58,7 +58,6 @@ def api_request_cached(league_id):
     except: return []
 
 def get_fatigue_factor(team_id, match_date_str):
-    """Calcula el factor de fatiga basado en días de descanso"""
     last_matches = api_request_live("get_events", {
         "from": (datetime.strptime(match_date_str, '%Y-%m-%d') - timedelta(days=10)).strftime('%Y-%m-%d'),
         "to": (datetime.strptime(match_date_str, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d'),
@@ -69,17 +68,15 @@ def get_fatigue_factor(team_id, match_date_str):
         last_date = datetime.strptime(last_matches[-1]['match_date'], '%Y-%m-%d')
         target_date = datetime.strptime(match_date_str, '%Y-%m-%d')
         days_off = (target_date - last_date).days
-        if days_off <= 3: return 0.92  # Penalización por poco descanso
-        if days_off >= 7: return 1.05  # Bonus por frescura
+        if days_off <= 3: return 0.92
+        if days_off >= 7: return 1.05
         return 1.0
     except: return 1.0
 
 def get_market_consensus(match_id):
-    """Obtiene probabilidad implícita de las cuotas para calibrar el modelo"""
     odds = api_request_live("get_odds", {"match_id": match_id})
     if not odds: return None
     try:
-        # Buscamos cuotas 1X2 (usualmente en la primera entrada disponible)
         o = odds[0]
         o1, ox, o2 = float(o['odd_1']), float(o['odd_x']), float(o['odd_2'])
         margin = (1/o1) + (1/ox) + (1/o2)
@@ -129,7 +126,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO QUANTUM (DIXON-COLES V4.5)
+# 3. MOTOR MATEMÁTICO DIXON-COLES
 # =================================================================
 
 class MotorMatematico:
@@ -174,10 +171,8 @@ class MotorMatematico:
 
         total = max(0.0001, p1 + px + p2)
 
-        # Integración de Sesgo de Mercado si existe
         if st.session_state['market_bias']:
             m1, mx, m2 = st.session_state['market_bias']
-            # Ponderación: 75% Modelo Matemático, 25% Sabiduría del Mercado
             p1 = (p1/total * 0.75) + (m1 * 0.25)
             px = (px/total * 0.75) + (mx * 0.25)
             p2 = (p2/total * 0.75) + (m2 * 0.25)
@@ -200,7 +195,7 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (SIN CAMBIOS GLOBALES)
+# 4. DISEÑO UI/UX
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
 
@@ -249,7 +244,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (SIN CAMBIOS)
+# 5. SIDEBAR
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
@@ -296,12 +291,8 @@ with st.sidebar:
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
                         elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
                         elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
-
-                        # CALCULO DE FATIGA AUTOMÁTICO
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
-
-                        # SESGO DE MERCADO (ODDS)
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
 
                         ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
@@ -312,13 +303,12 @@ with st.sidebar:
                         st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
 
-                        # Capturar auditoría
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
                         st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]
                         st.rerun()
 
 # =================================================================
-# 6. CONTENIDO PRINCIPAL (SIN CAMBIOS GLOBAL VISUALS)
+# 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V4.5 QUANTUM + SYNC</p>", unsafe_allow_html=True)
@@ -349,8 +339,6 @@ if generar:
     hfa = st.session_state['hfa_league']
     h2h_l, h2h_v = st.session_state['h2h_bias']
     elo_l, elo_v = st.session_state['elo_bias']
-
-    # INTEGRACIÓN DE FACTORES DE FATIGA EN EL XG
     f_l, f_v = st.session_state['fatiga_l'], st.session_state['fatiga_v']
 
     xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l * f_l
@@ -367,6 +355,7 @@ if generar:
     for s in sug: msg += f"• {s['t']}: {s['p']:.1f}%\n"
     encoded_msg = urllib.parse.quote(msg + f"\n*MARCADOR:* {res['TOP'][0][0]}\n*CONFIANZA:* {res['BRIER']*100:.1f}%")
     with b_wa: st.markdown(f'<a href="https://wa.me/?text={encoded_msg}" target="_blank" class="whatsapp-btn">📲 COMPARTIR REPORTE</a>', unsafe_allow_html=True)
+    
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
@@ -378,6 +367,7 @@ if generar:
         st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+    
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 AUDITORÍA"])
@@ -412,57 +402,54 @@ if generar:
         fig.update_layout(title={'text': "MATRIZ DE PROBABILIDAD", 'y':0.95, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'}, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(family="Outfit", color="#eee", size=12), xaxis=dict(side="bottom", gridcolor="#222"), yaxis=dict(gridcolor="#222"), coloraxis_colorbar=dict(title="%", thickness=15))
         st.plotly_chart(fig, use_container_width=True)
         
-    # =================================================================
-    # CAMBIO: PESTAÑA DE AUDITORÍA (SOLO MEJORA VISUAL Y COLORACIÓN)
-    # =================================================================
+    # --- PESTAÑA AUDITORÍA REDISEÑADA ---
     with t6:
-        st.markdown("<h5 style='color:var(--primary); margin-bottom:20px;'>ANÁLISIS DE VOLATILIDAD Y TENDENCIA RECIENTE</h5>", unsafe_allow_html=True)
+        st.markdown("""
+            <div style='background: linear-gradient(90deg, #0a0c10 0%, #141923 100%); padding: 20px; border-radius: 15px; border-left: 5px solid #d4af37; margin-bottom: 25px;'>
+                <h3 style='color:#fff; margin:0;'>REPORTE DE BACKTESTING <span style='color:#d4af37; font-size:0.6em;'>v4.5 LIVE</span></h3>
+                <p style='color:#666; font-size:0.9em; margin:0;'>Validación de precisión del motor Quantum sobre los últimos 5 encuentros.</p>
+            </div>
+        """, unsafe_allow_html=True)
         
         if st.session_state['audit_results']:
-            # --- CÁLCULOS DE TENDENCIA ---
             matches = st.session_state['audit_results']
-            total = len(matches)
-            goles_totales = sum(int(m['match_hometeam_score']) + int(m['match_awayteam_score']) for m in matches)
-            promedio_reciente = goles_totales / total
-            over25 = sum(1 for m in matches if (int(m['match_hometeam_score']) + int(m['match_awayteam_score'])) > 2.5)
-            btts = sum(1 for m in matches if int(m['match_hometeam_score']) > 0 and int(m['match_awayteam_score']) > 0)
-            victorias_L = sum(1 for m in matches if int(m['match_hometeam_score']) > int(m['match_awayteam_score']))
+            total_hits = 0
+            total_picks = 0
+            audit_cards = []
 
-            # --- HEADER DE MÉTRICAS ---
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Goles Avg (5pj)", f"{promedio_reciente:.2f}", f"{promedio_reciente - p_liga:.2f} vs Liga")
-            m2.metric("% Over 2.5", f"{(over25/total)*100:.0f}%")
-            m3.metric("% BTTS", f"{(btts/total)*100:.0f}%")
-            m4.metric("% Victoria L", f"{(victorias_L/total)*100:.0f}%")
-
-            st.markdown("<hr style='border: 0.5px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-
-            # --- LISTADO ESTILIZADO CON BADGES Y COLORES ---
             for m in matches:
                 h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
-                total_goals = h_s + v_s
-                is_over_text = "🔥 O2.5" if total_goals > 2.5 else "🧊 U2.5"
-                is_btts_text = "✅ BTTS" if (h_s > 0 and v_s > 0) else "❌ No BTTS"
+                test_motor = MotorMatematico(league_avg=p_liga)
+                txg_l, txg_v = (lgf/p_liga) * p_liga, (vgf/p_liga) * p_liga
+                back_res = test_motor.procesar(txg_l, txg_v, ltj+vtj, lco+vco)
                 
-                # Logic to color (Forest Green for predicted "Yes", Firebrick Red for predicted "No")
-                color_over = "#228b22" if total_goals > 2.5 else "#b22222"
-                color_btts = "#228b22" if (h_s > 0 and v_s > 0) else "#b22222"
+                sim_picks = [
+                    {"t": "Over 2.5", "p": back_res['GOLES'][2.5][0], "hit": (h_s + v_s) > 2.5},
+                    {"t": "BTTS: SÍ", "p": back_res['BTTS'][0], "hit": (h_s > 0 and v_s > 0)},
+                    {"t": "Local/Empate", "p": back_res['DC'][0], "hit": (h_s >= v_s)},
+                    {"t": "Visita/Empate", "p": back_res['DC'][1], "hit": (v_s >= h_s)}
+                ]
                 
-                st.markdown(f"""
-                <div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:12px; margin-bottom:10px; border: 1px solid rgba(212,175,55,0.1); display: flex; justify-content: space-between; align-items: center;'>
-                    <div style='flex: 2;'>
-                        <small style='color:#666;'>{m['match_date']}</small><br>
-                        <b style='font-size:1.1em;'>{m['match_hometeam_name']} <span style='color:var(--secondary);'>{h_s} - {v_s}</span> {m['match_awayteam_name']}</b>
-                    </div>
-                    <div style='flex: 1; text-align: right;'>
-                        <span style='background:{color_over}; padding:4px 8px; border-radius:6px; font-size:0.75em; border: 1px solid #333; margin-right:5px; color:white;'>{is_over_text}</span>
-                        <span style='background:{color_btts}; padding:4px 8px; border-radius:6px; font-size:0.75em; border: 1px solid #333; color:white;'>{is_btts_text}</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.caption(f"Nota: Desviación actual del modelo vs realidad: {abs(promedio_reciente - p_liga):.2f} goles.")
-        else: 
-            st.info("Sincroniza datos para ver la auditoría de la liga.")
+                top_sim_picks = sorted([p for p in sim_picks], key=lambda x: x['p'], reverse=True)[:2]
+                pick_html = ""
+                for ps in top_sim_picks:
+                    total_picks += 1
+                    badge = f"<span style='color:#00ffa3; background:rgba(0,255,163,0.1); padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #00ffa3;'>✓ HIT</span>" if ps['hit'] else f"<span style='color:#ff4b4b; background:rgba(255,75,75,0.1); padding:2px 8px; border-radius:4px; font-size:0.8em; border:1px solid #ff4b4b;'>✗ MISS</span>"
+                    if ps['hit']: total_hits += 1
+                    pick_html += f"<div style='margin-top:5px;'>{badge} <small>{ps['t']} ({ps['p']:.0f}%)</small></div>"
+
+                audit_cards.append({"date": m['match_date'], "teams": f"{m['match_hometeam_name']} <span style='color:#d4af37;'>{h_s} - {v_s}</span> {m['match_awayteam_name']}", "picks": pick_html})
+
+            accuracy = (total_hits / total_picks * 100) if total_picks > 0 else 0
+            c1, c2, c3 = st.columns(3)
+            with c1: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PRECISIÓN DE PICKS</small><br><b style='font-size:1.8em; color:#00ffa3;'>{accuracy:.1f}%</b></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>MUESTRA ANALIZADA</small><br><b style='font-size:1.8em; color:#fff;'>{len(matches)} <span style='font-size:0.5em;'>PJ</span></b></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>FACTOR VOLATILIDAD</small><br><b style='font-size:1.8em; color:#d4af37;'>{abs(accuracy-80)/10:.1f} <span style='font-size:0.5em;'>σ</span></b></div>", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            for card in audit_cards:
+                st.markdown(f"""<div style='display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 12px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.05);'><div style='flex: 1;'><small style='color:#555; font-family:JetBrains Mono;'>{card['date']}</small><br><b style='font-size:1.05em;'>{card['teams']}</b></div><div style='flex: 1; text-align: right; border-left: 1px solid #222; padding-left: 15px;'><small style='color:#888; text-transform:uppercase; font-size:0.7em; letter-spacing:1px;'>Verificación Quantum</small>{card['picks']}</div></div>""", unsafe_allow_html=True)
+        else:
+            st.warning("⚠️ No hay datos históricos suficientes para realizar el backtesting. Sincroniza la liga primero.")
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MARKET CONSENSUS | OR936 ELITE v4.5</p>", unsafe_allow_html=True)

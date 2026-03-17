@@ -39,7 +39,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (MEJORADAS)
+# 2. FUNCIONES DE LÓGICA ELITE
 # =================================================================
 
 def api_request_live(action, params=None):
@@ -71,9 +71,7 @@ def get_fatigue_factor(team_id, match_date_str):
         last_date = datetime.strptime(last_matches[-1]['match_date'], '%Y-%m-%d')
         target_date = datetime.strptime(match_date_str, '%Y-%m-%d')
         days_off = (target_date - last_date).days
-        if days_off <= 3: return 0.90  # Penalización
-        if days_off >= 7: return 1.06  # Bonus frescura
-        return 1.0
+        return 0.90 if days_off <= 3 else (1.06 if days_off >= 7 else 1.0)
     except: return 1.0
 
 def get_market_consensus(match_id):
@@ -92,32 +90,27 @@ def get_advanced_metrics_v2(team_id, league_id):
                                              "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
     if not events: return 1.0, 1.0, ""
     finished = [e for e in events if e['match_status'] == 'Finished']
-    if not finished: return 1.0, 1.0, ""
-
-    momentum_gf = 0
     icons = []
+    momentum = 0
     for i, m in enumerate(finished[-5:][::-1]):
         is_home = m['match_hometeam_id'] == team_id
-        gs = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
-        gc = int(m['match_awayteam_score']) if is_home else int(m['match_hometeam_score'])
+        gs, gc = (int(m['match_hometeam_score']), int(m['match_awayteam_score'])) if is_home else (int(m['match_awayteam_score']), int(m['match_hometeam_score']))
         if gs > gc: icons.append("🟢")
         elif gs < gc: icons.append("🔴")
         else: icons.append("🟡")
-        if i < 3: momentum_gf += gs * [0.5, 0.3, 0.2][i]
-
-    return 1.10 if "🟢🟢" in "".join(icons) else 1.0, momentum_gf, "".join(icons)
+        if i < 3: momentum += gs * [0.5, 0.3, 0.2][i]
+    return 1.10 if "🟢🟢" in "".join(icons) else 1.0, momentum, "".join(icons)
 
 @st.cache_data(ttl=300)
 def get_h2h_data(team_id_l, team_id_v):
     res = api_request_live("get_H2H", {"firstTeamId": team_id_l, "secondTeamId": team_id_v})
     if not res or 'firstTeam' not in res: return 1.0, 1.0
     matches = res.get('firstTeam', []) + res.get('secondTeam', [])
-    if not matches: return 1.0, 1.0
     l_pts, v_pts = 0, 0
     for m in matches[:6]:
         try:
             h_s, a_s = int(m.get('match_hometeam_score', 0)), int(m.get('match_awayteam_score', 0))
-            if h_s > a_s:
+            if h_s > a_s: 
                 if m['match_hometeam_id'] == team_id_l: l_pts += 3
                 else: v_pts += 3
             elif h_s < a_s:
@@ -129,12 +122,11 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO (DIXON-COLES V4.8 + RHO DINÁMICA)
+# 3. MOTOR MATEMÁTICO (DIXON-COLES V4.8)
 # =================================================================
 
 class MotorMatematico:
     def __init__(self, league_avg=2.5): 
-        # Rho dinámica: Si la liga es de pocos goles, el ajuste de empate es más fuerte
         self.rho = -0.18 if league_avg < 2.3 else (-0.12 if league_avg > 2.8 else -0.15)
 
     def poisson_prob(self, k, lam):
@@ -151,8 +143,9 @@ class MotorMatematico:
     def procesar(self, xg_l, xg_v, tj_total, co_total):
         p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
-        g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]; h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
+        g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
         g_probs = {t: [0.0, 0.0] for t in g_lines}
+        h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
         h_probs_l = {h: 0.0 for h in h_lines}; h_probs_v = {h: 0.0 for h in h_lines}
 
         for i in range(10): 
@@ -174,7 +167,6 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
 
         total = max(0.0001, p1 + px + p2)
-
         if st.session_state['market_bias']:
             m1, mx, m2 = st.session_state['market_bias']
             p1 = (p1/total * 0.75) + (m1 * 0.25)
@@ -182,7 +174,6 @@ class MotorMatematico:
             p2 = (p2/total * 0.75) + (m2 * 0.25)
             total = p1 + px + p2
 
-        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
 
@@ -195,14 +186,12 @@ class MotorMatematico:
             "TARJETAS": {t: (np.sum(sim_tj > t)/150, np.sum(sim_tj <= t)/150) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
             "CORNERS": {t: (np.sum(sim_co > t)/150, np.sum(sim_co <= t)/150) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
-            "MATRIZ": matriz, "BRIER": confianza
+            "MATRIZ": matriz, "BRIER": 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (CSS ORIGINAL)
+# 4. DISEÑO UI/UX ORIGINAL
 # =================================================================
-st.set_page_config(page_title="OR936 QUANTUM ELITE", layout="wide")
-
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Outfit:wght@300;400;600;900&display=swap');
@@ -211,7 +200,6 @@ st.markdown("""
     .stApp { background: var(--bg); color: #e0e0e0; }
     .master-card { background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9)); padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15); box-shadow: 0 20px 40px rgba(0,0,0,0.6); margin-bottom: 30px; }
     .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; font-size: 1.05em; }
-    .elite-alert { background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(0,255,163,0.05)); border: 1px solid var(--primary); }
     .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
     .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
@@ -249,28 +237,25 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR & SYNC
+# 5. SIDEBAR & SYNC (RESTABLECIMIENTO AUDITORÍA)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL</h2>", unsafe_allow_html=True)
     ligas_api = {
-        "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601,
+        "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (SV)": 601,
         "Premier League": 152, "La Liga": 302, "Serie A": 207, "Bundesliga": 175, "Ligue 1": 168, 
-        "UEFA Champions League": 3, "UEFA Europa League": 4, "Copa Libertadores": 13,
-        "Brasileirão Série A": 99
+        "Champions League": 3, "Libertadores": 13, "Brasileirão Série A": 99
     }
     nombre_liga = st.selectbox("🏆 Competición", list(ligas_api.keys()))
     fecha_analisis = st.date_input("📅 JORNADA CENTRAL", value=ahora_sv.date())
-    
     raw_events = api_request_live("get_events", {"from": (fecha_analisis - timedelta(days=3)).strftime('%Y-%m-%d'), "to": (fecha_analisis + timedelta(days=3)).strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
 
     if raw_events:
         op_p = {f"{e['match_hometeam_name']} vs {e['match_awayteam_name']}": e for e in raw_events}
-        p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
+        p_sel = st.selectbox("📍 Partidos", list(op_p.keys()))
 
         if st.button("SYNC QUANTUM DATA"):
-            st.cache_data.clear()
-            with st.spinner("DEEP SYNC..."):
+            with st.spinner("QUANTUM DEEP SYNC..."):
                 standings = api_request_cached(ligas_api[nombre_liga])
                 match_info = op_p[p_sel]
                 if standings:
@@ -278,116 +263,14 @@ with st.sidebar:
                         nombres = [t['team_name'] for t in standings]
                         m, s = process.extractOne(n, nombres)
                         return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
-                    
                     dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
                     if dl and dv:
-                        st.session_state['hfa_league'] = 1.18
-                        st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        
                         elo_l, mom_l, icons_l = get_advanced_metrics_v2(dl['team_id'], ligas_api[nombre_liga])
                         elo_v, mom_v, icons_v = get_advanced_metrics_v2(dv['team_id'], ligas_api[nombre_liga])
-                        
                         st.session_state['form_l_icons'], st.session_state['form_v_icons'] = icons_l, icons_v
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
-
+                        st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
                         ph, pa = int(dl['home_league_payed']), int(dv['away_league_payed'])
-                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) + (mom_l * 0.1)
-                        st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/ph if ph>0 else 1.0)
-                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pa if pa>0 else 1.2) + (mom_v * 0.1)
-                        st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pa if pa>0 else 1.3)
-                        st.session_state['elo_bias'] = (elo_l, elo_v)
-                        st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                        st.rerun()
-
-# =================================================================
-# 6. CONTENIDO PRINCIPAL
-# =================================================================
-st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>QUANTUM ENGINE V4.8 + VALUE DETECTION</p>", unsafe_allow_html=True)
-
-col_l, col_v = st.columns(2)
-with col_l:
-    st.markdown(f"<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px;'><h6 style='color:var(--secondary); margin:0; font-weight:900;'>LOCAL</h6><div class='form-pill'>{st.session_state['form_l_icons']}</div></div>", unsafe_allow_html=True)
-    nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
-    la, lb = st.columns(2)
-    lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
-    ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, key='ltj_auto'), lb.number_input("Corners L", 0.0, 20.0, key='lco_auto')
-
-with col_v:
-    st.markdown(f"<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px;'><h6 style='color:var(--primary); margin:0; font-weight:900;'>VISITANTE</h6><div class='form-pill'>{st.session_state['form_v_icons']}</div></div>", unsafe_allow_html=True)
-    nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
-    va, vb = st.columns(2)
-    vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
-    vtj, vco = va.number_input("Tarjetas V", 0.0, 15.0, key='vtj_auto'), vb.number_input("Corners V", 0.0, 20.0, key='vco_auto')
-
-p_liga = st.slider("Media Goles Liga", 0.5, 5.0, key='p_liga_auto')
-
-if st.button("GENERAR REPORTE DE INTELIGENCIA"):
-    motor = MotorMatematico(league_avg=p_liga)
-    hfa, (h2h_l, h2h_v), (elo_l, elo_v), f_l, f_v = st.session_state['hfa_league'], st.session_state['h2h_bias'], st.session_state['elo_bias'], st.session_state['fatiga_l'], st.session_state['fatiga_v']
-    
-    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * hfa * h2h_l * elo_l * f_l
-    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/hfa) * h2h_v * elo_v * f_v
-
-    res = motor.procesar(xg_l, xg_v, ltj+vtj, lco+vco)
-    
-    # Lógica de detección de VALOR
-    pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
-    for line, p in res['GOLES'].items():
-        if 1.5 <= line <= 3.5:
-            pool.append({"t": f"Over {line} Goles", "p": p[0]})
-            pool.append({"t": f"Under {line} Goles", "p": p[1]})
-    sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
-
-    st.markdown('<div class="master-card">', unsafe_allow_html=True)
-    v1, v2 = st.columns([1.5, 1])
-    with v1:
-        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
-        for s in sug:
-            # Detección de Valor: Si la prob del modelo es alta y hay sesgo positivo
-            val_tag = " <span style='color:#fff; font-size:0.7em; background:#d4af37; padding:2px 6px; border-radius:4px;'>VALUE</span>" if s['p'] > 82 else ""
-            st.markdown(f'<div class="verdict-item"><b>{s["p"]:.1f}%</b> — {s["t"]}{val_tag}</div>', unsafe_allow_html=True)
-    with v2:
-        st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
-        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
-
-    t1, t2, t3, t4, t5, t6 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 MERCADOS 1X2", "🚩 ESPECIALES", "🧩 MATRIZ", "📈 RADAR COMPARATIVO"])
-    with t1:
-        ga, gb = st.columns(2); 
-        with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
-        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    with t2:
-        ha, hb = st.columns(2)
-        with ha:
-            for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"L {h:+}", p, "", 100-p, color="#00ffa3")
-        with hb:
-            for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"V {h:+}", p, "", 100-p, color="#d4af37")
-    with t3:
-        dual_bar_explicit(f"1X ({nl_manual} o X)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
-        dual_bar_explicit(f"X2 ({nv_manual} o X)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
-        dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
-    with t4:
-        ta, co = st.columns(2)
-        with ta:
-            for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
-        with co:
-            for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
-    with t5:
-        fig = px.imshow(res['MATRIZ'], text_auto=".1f", color_continuous_scale='Greens')
-        st.plotly_chart(fig, use_container_width=True)
-    with t6:
-        # Gráfico Radar Comparativo
-        categories = ['Ataque', 'Defensa', 'ELO', 'Fatiga', 'Forma']
-        fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(r=[lgf*20, (3-lgc)*20, elo_l*80, f_l*90, 85], theta=categories, fill='toself', name=nl_manual, line_color='#00ffa3'))
-        fig_radar.add_trace(go.Scatterpolar(r=[vgf*20, (3-vgc)*20, elo_v*80, f_v*90, 70], theta=categories, fill='toself', name=nv_manual, line_color='#d4af37'))
-        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False), bgcolor='rgba(0,0,0,0)'), paper_bgcolor='rgba(0,0,0,0)', font=dict(color="#fff"))
-        st.plotly_chart(fig_radar, use_container_width=True)
-
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & DYNAMIC RHO | OR936 ELITE v4.8</p>", unsafe_allow_html=True)
+                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/ph if ph>0 else 1.5) + (mom

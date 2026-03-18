@@ -30,6 +30,11 @@ if 'hfa_specific' not in st.session_state: st.session_state['hfa_specific'] = (1
 if 'draw_freq' not in st.session_state: st.session_state['draw_freq'] = 0.25
 if 'corner_bias' not in st.session_state: st.session_state['corner_bias'] = (1.0, 1.0)
 
+# NUEVOS ESTADOS PARA OPTIMIZACIÓN XG
+if 'proxy_xg_l' not in st.session_state: st.session_state['proxy_xg_l'] = 1.5
+if 'proxy_xg_v' not in st.session_state: st.session_state['proxy_xg_v'] = 1.2
+if 'luck_factor' not in st.session_state: st.session_state['luck_factor'] = (1.0, 1.0)
+
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
     'lgf_auto': 1.7, 'lgc_auto': 1.2, 'vgf_auto': 1.5, 'vgc_auto': 1.1,
@@ -62,21 +67,25 @@ def api_request_cached(league_id):
 
 @st.cache_data(ttl=600)
 def get_team_tactical_stats(team_id, league_id):
-    """Obtiene estadísticas tácticas de la API para mejorar corners"""
     params = {"action": "get_statistics", "league_id": league_id, "team_id": team_id}
     data = api_request_live("get_statistics", params)
-    if not data or 'corners' not in data: return 1.0
+    if not data or 'corners' not in data: return 1.0, 1.0 # Retornamos IA y Proxy xG base
     try:
-        # Extraemos tiros bloqueados y posesión media
-        shots_blocked = int(data.get('shots_blocked', 0))
-        total_matches = int(data.get('match_played', 1))
-        possession = int(data.get('possession', 50).replace('%',''))
+        shots_on_goal = int(data.get('shots_on_goal', 0))
+        shots_total = int(data.get('shots_total', 0))
+        match_played = int(data.get('match_played', 1))
         
-        # Un equipo que genera muchos tiros bloqueados y tiene mucha posesión
-        # tiene un multiplicador de corners más alto (IA: Índice de Asedio)
-        ia = (1 + (shots_blocked / total_matches / 5)) * (possession / 50)
-        return max(0.8, min(1.4, ia))
-    except: return 1.0
+        # PROXY XG: (Tiros a puerta * 0.33) + (Tiros fallados * 0.10)
+        shots_off = max(0, shots_total - shots_on_goal)
+        pxg_per_game = ((shots_on_goal * 0.33) + (shots_off * 0.10)) / match_played
+        
+        # IA (Índice de Asedio para corners)
+        shots_blocked = int(data.get('shots_blocked', 0))
+        possession = int(data.get('possession', 50).replace('%',''))
+        ia = (1 + (shots_blocked / match_played / 5)) * (possession / 50)
+        
+        return max(0.8, min(1.4, ia)), pxg_per_game
+    except: return 1.0, 1.0
 
 def get_fatigue_factor(team_id, match_date_str):
     last_matches = api_request_live("get_events", {
@@ -108,26 +117,36 @@ def get_market_consensus(match_id):
 def get_advanced_metrics(team_id, league_id, position):
     events = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=60)).strftime('%Y-%m-%d'), 
                                              "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": league_id, "team_id": team_id})
-    if not events or not isinstance(events, list): return 1.0, 1.0
+    if not events or not isinstance(events, list): return 1.0, 1.0, 1.0
     finished = [e for e in events if e['match_status'] == 'Finished']
-    if not finished: return 1.0, 1.0
+    if not finished: return 1.0, 1.0, 1.0
 
     momentum_gf = 0
     total_w = 0
+    goles_reales = 0
     for m in finished[-5:]:
         try:
             m_date = datetime.strptime(m['match_date'], '%Y-%m-%d').replace(tzinfo=tz_sv)
             days_diff = (ahora_sv - m_date).days
-            weight = math.exp(-0.04 * days_diff)
+            weight = math.exp(-0.04 * days_diff) # TIME DECAY
             is_home = m['match_hometeam_id'] == team_id
             gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
             momentum_gf += (gf * weight)
+            goles_reales += gf
             total_w += weight
         except: continue
 
     momentum_adj = (momentum_gf / total_w) if total_w > 0 else 1.0
     elo_strength = 1.15 if int(position) <= 4 else (1.05 if int(position) <= 8 else 0.95)
-    return elo_strength, momentum_adj
+    
+    # REGRESIÓN A LA MEDIA: Comparamos goles reales vs capacidad de anotación esperada
+    # Si un equipo anotó demasiado en relación a su promedio, su 'luck' sube.
+    avg_goles = goles_reales / len(finished[-5:]) if finished else 1.0
+    luck_factor = 1.0
+    if avg_goles > 2.0: luck_factor = 0.95 # Sobrerendimiento, regresará abajo
+    elif avg_goles < 0.5: luck_factor = 1.05 # Infrarendimiento, regresará arriba
+    
+    return elo_strength, momentum_adj, luck_factor
 
 @st.cache_data(ttl=300)
 def get_h2h_data(team_id_l, team_id_v):
@@ -173,7 +192,6 @@ class MotorMatematico:
         return 1.0
 
     def procesar(self, xg_l, xg_v, tj_total, co_total):
-        # 1. CÁLCULO ANALÍTICO (DIXON-COLES)
         p1_d, px_d, p2_d, btts_d = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]; h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
@@ -200,16 +218,15 @@ class MotorMatematico:
 
         total_d = max(0.0001, p1_d + px_d + p2_d)
 
-        # 2. CÁLCULO ESTOCÁSTICO (MONTE CARLO PRO)
         sim_h = np.random.poisson(xg_l, 10000)
         sim_v = np.random.poisson(xg_v, 10000)
         tot_g_sim = sim_h + sim_v
         margen_sim = sim_h - sim_v
-        
+
         p1_mc = (sim_h > sim_v).mean()
         px_mc = (sim_h == sim_v).mean()
         p2_mc = (sim_v > sim_h).mean()
-        
+
         W_D, W_MC = 0.70, 0.30
         p1_f = (p1_d/total_d * W_D) + (p1_mc * W_MC)
         px_f = (px_d/total_d * W_D) + (px_mc * W_MC)
@@ -224,7 +241,7 @@ class MotorMatematico:
             total_f = p1_f + px_f + p2_f
 
         confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
-        
+
         mc_data = {
             "L": p1_mc * 100, "X": px_mc * 100, "V": p2_mc * 100,
             "CS_L": (sim_v == 0).mean() * 100, "CS_V": (sim_h == 0).mean() * 100,
@@ -255,7 +272,7 @@ class MotorMatematico:
 # =================================================================
 # 4. DISEÑO UI/UX
 # =================================================================
-st.set_page_config(page_title="OR936 QUANTUM ELITE v6.5", layout="wide")
+st.set_page_config(page_title="OR936 QUANTUM ELITE v6.6", layout="wide")
 
 st.markdown("""
     <style>
@@ -309,7 +326,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # 5. SIDEBAR
 # =================================================================
 with st.sidebar:
-    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v6.5</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v6.6</h2>", unsafe_allow_html=True)
     ligas_api = {
         "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
@@ -356,28 +373,31 @@ with st.sidebar:
                         hfa_l = (int(dl['home_league_GF'])/phl) / (int(dl['overall_league_GF'])/int(dl['overall_league_payed'])) if phl>0 else 1.1
                         hfa_v = (int(dv['away_league_GF'])/pav) / (int(dv['overall_league_GF'])/int(dv['overall_league_payed'])) if pav>0 else 0.9
                         st.session_state['hfa_specific'] = (hfa_l, hfa_v)
-                        
-                        # NUEVO: Sincronización de Bias Táctico de Corners
-                        cb_l = get_team_tactical_stats(dl['team_id'], ligas_api[nombre_liga])
-                        cb_v = get_team_tactical_stats(dv['team_id'], ligas_api[nombre_liga])
+
+                        cb_l, pxg_l = get_team_tactical_stats(dl['team_id'], ligas_api[nombre_liga])
+                        cb_v, pxg_v = get_team_tactical_stats(dv['team_id'], ligas_api[nombre_liga])
                         st.session_state['corner_bias'] = (cb_l, cb_v)
+                        st.session_state['proxy_xg_l'] = pxg_l # OPTIMIZACIÓN 1: PROXY XG
+                        st.session_state['proxy_xg_v'] = pxg_v
 
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        elo_l, mom_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
-                        elo_v, mom_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
+                        elo_l, mom_l, luck_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'])
+                        elo_v, mom_v, luck_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'])
+                        
+                        st.session_state['luck_factor'] = (luck_l, luck_v) # OPTIMIZACIÓN 3: REGRESIÓN A LA MEDIA
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
-                        
-                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/phl if phl>0 else 1.5) * 0.7 + (mom_l * 0.3)
+
+                        # OPTIMIZACIÓN 2: MOMENTUM HÍBRIDO (GF HISTÓRICO + RECIENTE)
+                        st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/phl if phl>0 else 1.5) * 0.6 + (mom_l * 0.4)
                         st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/phl if phl>0 else 1.0)
-                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pav if pav>0 else 1.2) * 0.7 + (mom_v * 0.3)
+                        st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pav if pav>0 else 1.2) * 0.6 + (mom_v * 0.4)
                         st.session_state['vgc_auto'] = (float(dv['away_league_GA'])/pav if pav>0 else 1.3)
-                        
-                        # Sincronización base de Corners/Tarjetas de los standings
+
                         st.session_state['lco_auto'] = float(dl.get('home_league_corners', 5.5))
                         st.session_state['vco_auto'] = float(dv.get('away_league_corners', 4.8))
-                        
+
                         st.session_state['elo_bias'] = (elo_l, elo_v)
                         st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
@@ -388,7 +408,7 @@ with st.sidebar:
 # 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V6.5 QUANTUM + TACTICAL SYNC</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V6.6 QUANTUM + XG PROXY OPTIMIZED</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -408,7 +428,6 @@ with col_v:
 st.markdown("<br>", unsafe_allow_html=True)
 p_liga = st.slider("Media de Goles de la Liga", 0.5, 5.0, key='p_liga_auto')
 
-# --- CUADRO DE ÁRBITRO ---
 st.markdown('<div class="ref-box">', unsafe_allow_html=True)
 st.markdown("<h6 style='color:#d4af37; margin-top:0; font-weight:700;'>⚖️ CALIBRACIÓN DEL COLEGIADO</h6>", unsafe_allow_html=True)
 rc1, rc2 = st.columns([2, 1])
@@ -421,30 +440,32 @@ with b_ex: generar = st.button("GENERAR REPORTE DE INTELIGENCIA")
 
 if generar:
     motor = MotorMatematico(league_avg=p_liga, draw_freq=st.session_state['draw_freq'])
-    
-    # Cálculos de xG y Bias
+
+    # INTEGRACIÓN DE MEJORAS DE XG EN LA FÓRMULA FINAL
     hfa_base = st.session_state['hfa_league']
     hfa_l_spec, hfa_v_spec = st.session_state['hfa_specific']
-    xg_l = (lgf/p_liga)*(vgc/p_liga)*p_liga * (hfa_base * hfa_l_spec) * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l']
-    xg_v = (vgf/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v']
-
-    # Ajuste Matemático Tarjetas
-    tj_final = ( (ltj + vtj) * 0.4 + (ref_avg * 0.6) ) if ref_avg > 0 else (ltj + vtj)
+    luck_l, luck_v = st.session_state['luck_factor']
     
-    # --- MEJORA: AJUSTE TÁCTICO DE CORNERS ---
-    # Fusionamos el promedio manual/auto con el Índice de Asedio (IA) de la API
+    # 1. Ajuste de Ataque: Promedio de GF Histórico y Proxy xG de tiros
+    ataque_l = (lgf * 0.5) + (st.session_state['proxy_xg_l'] * 0.5)
+    ataque_v = (vgf * 0.5) + (st.session_state['proxy_xg_v'] * 0.5)
+
+    # 2. xG Final con Regresión a la Media (luck_factor)
+    xg_l = (ataque_l/p_liga)*(vgc/p_liga)*p_liga * (hfa_base * hfa_l_spec) * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l'] * luck_l
+    xg_v = (ataque_v/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v'] * luck_v
+
+    tj_final = ( (ltj + vtj) * 0.4 + (ref_avg * 0.6) ) if ref_avg > 0 else (ltj + vtj)
     cb_l, cb_v = st.session_state['corner_bias']
-    # El asedio (IA) escala los corners esperados según tiros bloqueados y posesión
     co_final = (lco * cb_l) + (vco * cb_v)
 
     res = motor.procesar(xg_l, xg_v, tj_final, co_final)
-    
-    # Resto de la lógica de UI...
+
+    # UI RENDERING
     pool = [{"t": "Doble Oportunidad 1X", "p": res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": res['DC'][1]}, {"t": "Mercado 12", "p": res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
         if 1.5 <= line <= 3.5:
             pool.append({"t": f"Over {line} Goles", "p": p[0]}); pool.append({"t": f"Under {line} Goles", "p": p[1]})
-    
+
     sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
@@ -462,7 +483,7 @@ if generar:
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🎲 MONTE CARLO PRO", "🧩 MATRIZ", "📈 AUDITORÍA"])
-    
+
     with t1:
         ga, gb = st.columns(2)
         with ga:
@@ -532,7 +553,6 @@ if generar:
                 if "12" in pick_text: return h_s != v_s
                 if "SÍ" in pick_text: return h_s > 0 and v_s > 0
                 return False
-            standings = api_request_cached(ligas_api[nombre_liga])
             for m in matches:
                 try:
                     h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
@@ -551,4 +571,4 @@ if generar:
             for item in audit_data_list: st.write(f"{item['date']} | {item['match']} | {item['picks']}")
         else: st.warning("Sincroniza una liga primero.")
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v6.5 | TACTICAL CORNER & REFEREE CALIBRATION ACTIVE</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v6.6 | PROXY XG & REGRESSION SYSTEM ACTIVE</p>", unsafe_allow_html=True)

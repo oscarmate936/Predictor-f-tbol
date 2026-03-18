@@ -133,7 +133,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO DIXON-COLES + MONTE CARLO PRO
+# 3. MOTOR MATEMÁTICO DIXON-COLES + MONTE CARLO CORE
 # =================================================================
 
 class MotorMatematico:
@@ -192,17 +192,21 @@ class MotorMatematico:
             m_l, _, _ = st.session_state['market_bias']
             if abs((p1/total) - m_l) > 0.15: confianza *= 0.85
 
-        # --- MEJORA: MONTE CARLO PRO (10,000 Simulaciones) ---
+        # MONTE CARLO CORE
         sim_h = np.random.poisson(xg_l, 10000)
         sim_v = np.random.poisson(xg_v, 10000)
-        resultados_sim = []
-        for h, v in zip(sim_h, sim_v):
-            if h > v: resultados_sim.append("L")
-            elif h == v: resultados_sim.append("X")
-            else: resultados_sim.append("V")
+        tot_g = sim_h + sim_v
         
-        counts = pd.Series(resultados_sim).value_counts(normalize=True) * 100
-        mc_data = {"L": counts.get("L", 0), "X": counts.get("X", 0), "V": counts.get("V", 0), "TOTAL_GOALS": sim_h + sim_v}
+        mc_data = {
+            "L": (sim_h > sim_v).mean() * 100,
+            "X": (sim_h == sim_v).mean() * 100,
+            "V": (sim_v > sim_h).mean() * 100,
+            "G_0_1": (tot_g <= 1).mean() * 100,
+            "G_2_3": ((tot_g >= 2) & (tot_g <= 3)).mean() * 100,
+            "G_4_MAS": (tot_g >= 4).mean() * 100,
+            "VOLATILITY": np.std(tot_g),
+            "RAW_TOTALS": tot_g
+        }
 
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
@@ -222,7 +226,7 @@ class MotorMatematico:
 # =================================================================
 # 4. DISEÑO UI/UX
 # =================================================================
-st.set_page_config(page_title="OR936 QUANTUM ELITE v5.5", layout="wide")
+st.set_page_config(page_title="OR936 QUANTUM ELITE v6.0", layout="wide")
 
 st.markdown("""
     <style>
@@ -236,6 +240,11 @@ st.markdown("""
     .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
     .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
+    
+    /* MC PRO Styles */
+    .mc-stat-card { background: #0a0c10; border: 1px solid #1a1a1a; padding: 20px; border-radius: 15px; text-align: center; }
+    .mc-value { font-size: 1.6em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; }
+    .mc-label { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -272,7 +281,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
 # 5. SIDEBAR
 # =================================================================
 with st.sidebar:
-    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v5.5</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v6</h2>", unsafe_allow_html=True)
     ligas_api = {
         "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
@@ -339,7 +348,7 @@ with st.sidebar:
 # 6. CONTENIDO PRINCIPAL
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V5.5 QUANTUM + MONTE CARLO PRO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V6.0 QUANTUM + MC PRO</p>", unsafe_allow_html=True)
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -376,7 +385,7 @@ if generar:
             pool.append({"t": f"Over {line} Goles", "p": p[0]})
             pool.append({"t": f"Under {line} Goles", "p": p[1]})
     sug = sorted([s for s in pool if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
-    
+
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
@@ -398,21 +407,7 @@ if generar:
         with ga:
             for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
         with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
-    
-    with t5:
-        st.markdown("<h4 style='color:#d4af37; text-align:center;'>SIMULACIÓN CUÁNTICA (10,000 ITERACIONES)</h4>", unsafe_allow_html=True)
-        mc = res['MONTECARLO']
-        c1, c2, c3 = st.columns(3)
-        c1.metric("SIM: LOCAL", f"{mc['L']:.1f}%")
-        c2.metric("SIM: EMPATE", f"{mc['X']:.1f}%")
-        c3.metric("SIM: VISITA", f"{mc['V']:.1f}%")
-        
-        fig_mc = px.histogram(x=mc['TOTAL_GOALS'], nbins=10, labels={'x':'Total Goles en Simulación'}, title="DISTRIBUCIÓN DE GOLES (VARIABILIDAD)", color_discrete_sequence=['#d4af37'])
-        fig_mc.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
-        st.plotly_chart(fig_mc, use_container_width=True)
-        st.info("💡 La simulación Monte Carlo Pro valida la estabilidad de la matriz Dixon-Coles mediante muestreo aleatorio repetido.")
 
-    # (Resto de pestañas t2, t3, t4, t6, t7 mantienen su lógica original...)
     with t2:
         ha, hb = st.columns(2)
         with ha:
@@ -436,10 +431,116 @@ if generar:
             st.markdown("<h5 style='color:#00ffa3; text-align:center;'>CORNERS SIM</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
 
+    with t5:
+        mc = res['MONTECARLO']
+        st.markdown("<div style='background: linear-gradient(90deg, #0a0c10, #141923); padding: 25px; border-radius: 20px; border: 1px solid #222; margin-bottom: 25px;'>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:#fff; text-align:center; margin-bottom:20px;'>INSTITUTIONAL SIMULATION REPORT <span style='color:#d4af37; font-size:0.6em;'>10,000 ITERATIONS</span></h3>", unsafe_allow_html=True)
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Win</div><div class='mc-value'>{mc['L']:.1f}%</div></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Draw</div><div class='mc-value'>{mc['X']:.1f}%</div></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Loss</div><div class='mc-value'>{mc['V']:.1f}%</div></div>", unsafe_allow_html=True)
+        c4.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Volatility</div><div class='mc-value'>{mc['VOLATILITY']:.2f}</div></div>", unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        ca, cb = st.columns([1.5, 1])
+        with ca:
+            df_hist = pd.DataFrame({"Goles": mc['RAW_TOTALS']})
+            fig_hist = px.histogram(df_hist, x="Goles", nbins=15, title="PROBABILITY DENSITY: TOTAL GOALS", color_discrete_sequence=['#00ffa3'], text_auto=True)
+            fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", bargap=0.1)
+            st.plotly_chart(fig_hist, use_container_width=True)
+        with cb:
+            st.markdown("<h5 style='color:#fff;'>ZONAS DE PROBABILIDAD</h5>", unsafe_allow_html=True)
+            dual_bar_explicit("Bajo (0-1 Goles)", mc['G_0_1'], "", 100-mc['G_0_1'], color="#666")
+            dual_bar_explicit("Medio (2-3 Goles)", mc['G_2_3'], "", 100-mc['G_2_3'], color="#d4af37")
+            dual_bar_explicit("Alto (4+ Goles)", mc['G_4_MAS'], "", 100-mc['G_4_MAS'], color="#00ffa3")
+            st.warning("⚠️ Volatilidad alta indica que el partido puede tener resultados imprevisibles fuera de la media.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with t6:
         df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
         fig = px.imshow(df_matriz, labels=dict(x="Goles Visita", y="Goles Local", color="%"), color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f")
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
         st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>AUTHENTICATED | DIXON-COLES + MONTE CARLO PRO v5.5</p>", unsafe_allow_html=True)
+    # --- PESTAÑA AUDITORÍA (RESTABLECIDA AL ORIGINAL) ---
+    with t7:
+        st.markdown("""
+            <div style='background: linear-gradient(90deg, #0a0c10 0%, #141923 100%); padding: 20px; border-radius: 15px; border-left: 5px solid #d4af37; margin-bottom: 25px;'>
+                <h3 style='color:#fff; margin:0;'>BACKTESTING DE PRECISIÓN <span style='color:#d4af37; font-size:0.6em;'>QUANTUM ENGINE</span></h3>
+                <p style='color:#666; font-size:0.9em; margin:0;'>Validación exacta de las sugerencias (70%-98%) generadas frente a resultados finales.</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if st.session_state['audit_results']:
+            matches = st.session_state['audit_results']
+            total_hits = 0
+            total_picks_count = 0
+            audit_data_list = []
+
+            def verificar_resultado_real(pick_text, h_s, v_s):
+                total_g = h_s + v_s
+                if "Over" in pick_text:
+                    line = float(pick_text.split(" ")[1])
+                    return total_g > line
+                if "Under" in pick_text:
+                    line = float(pick_text.split(" ")[1])
+                    return total_g < line
+                if "Doble Oportunidad 1X" in pick_text: return h_s >= v_s
+                if "Doble Oportunidad X2" in pick_text: return v_s >= h_s
+                if "Mercado 12" in pick_text: return h_s != v_s
+                if "Ambos Anotan: SÍ" in pick_text: return h_s > 0 and v_s > 0
+                return False
+
+            standings = api_request_cached(ligas_api[nombre_liga])
+
+            for m in matches:
+                try:
+                    h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
+                    def buscar_t(n):
+                        nombres = [t['team_name'] for t in standings]
+                        res_f = process.extractOne(n, nombres)
+                        return next((t for t in standings if t['team_name'] == res_f[0]), None) if res_f[1] > 70 else None
+
+                    dtl, dtv = buscar_t(m['match_hometeam_name']), buscar_t(m['match_awayteam_name'])
+                    if dtl and dtv:
+                        ph, pa = int(dtl['home_league_payed']), int(dtv['away_league_payed'])
+                        slgf = (float(dtl['home_league_GF'])/ph if ph>0 else 1.5)
+                        slgc = (float(dtl['home_league_GA'])/ph if ph>0 else 1.0)
+                        svgf = (float(dtv['away_league_GF'])/pa if pa>0 else 1.2)
+                        svgc = (float(dtv['away_league_GA'])/pa if pa>0 else 1.3)
+                        txg_l = (slgf/p_liga)*(svgc/p_liga)*p_liga * hfa_base
+                        txg_v = (svgf/p_liga)*(slgc/p_liga)*p_liga * (1/hfa_base)
+                        back_res = motor.procesar(txg_l, txg_v, 4.0, 9.5) 
+
+                        pool_back = [{"t": "Doble Oportunidad 1X", "p": back_res['DC'][0]}, {"t": "Doble Oportunidad X2", "p": back_res['DC'][1]}, {"t": "Mercado 12", "p": back_res['DC'][2]}, {"t": "Ambos Anotan: SÍ", "p": back_res['BTTS'][0]}]
+                        for line, p_vals in back_res['GOLES'].items():
+                            if 1.5 <= line <= 3.5:
+                                pool_back.append({"t": f"Over {line} Goles", "p": p_vals[0]})
+                                pool_back.append({"t": f"Under {line} Goles", "p": p_vals[1]})
+
+                        sug_back = sorted([s for s in pool_back if 70 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
+                        pick_html = ""
+                        for ps in sug_back:
+                            is_hit = verificar_resultado_real(ps['t'], h_s, v_s)
+                            total_picks_count += 1
+                            if is_hit: total_hits += 1
+                            color = "#00ffa3" if is_hit else "#ff4b4b"; icon = "✓" if is_hit else "✗"
+                            pick_html += f"<div style='margin-bottom:4px; font-size:0.85em;'><span style='color:{color}; font-weight:bold;'>{icon}</span> <span style='color:#ccc;'>{ps['t']}</span> <span style='color:#666;'>({ps['p']:.1f}%)</span></div>"
+
+                        audit_data_list.append({"date": m['match_date'], "match": f"{m['match_hometeam_name']} {h_s} - {v_s} {m['match_awayteam_name']}", "picks": pick_html})
+                except: continue
+
+            accuracy = (total_hits / total_picks_count * 100) if total_picks_count > 0 else 0
+            c1, c2, c3 = st.columns(3)
+            with c1: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PRECISIÓN ELITE</small><br><b style='font-size:1.8em; color:#00ffa3;'>{accuracy:.1f}%</b></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>PICKS AUDITADOS</small><br><b style='font-size:1.8em; color:#fff;'>{total_picks_count}</b></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div style='text-align:center; background:#0a0c10; padding:15px; border-radius:12px; border:1px solid #222;'><small style='color:#666;'>MUESTRA DE PARTIDOS</small><br><b style='font-size:1.8em; color:#d4af37;'>{len(audit_data_list)}</b></div>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            for item in audit_data_list:
+                st.markdown(f"""<div style='display: flex; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); align-items: center;'><div style='flex: 1.2;'><small style='color:#555; font-family:JetBrains Mono;'>{item['date']}</small><br><b style='color:#eee;'>{item['match']}</b></div><div style='flex: 1; border-left: 1px solid #222; padding-left: 20px;'>{item['picks']}</div></div>""", unsafe_allow_html=True)
+        else:
+            st.warning("⚠️ Sincroniza una liga primero para realizar la auditoría de precisión.")
+
+st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>SYSTEM AUTHENTICATED | BRIER CALIBRATION & MC PRO | OR936 ELITE v6.0</p>", unsafe_allow_html=True)

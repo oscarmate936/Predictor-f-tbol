@@ -348,7 +348,7 @@ with st.sidebar:
                         st.session_state['lco_auto'] = float(dl.get('home_league_corners', 5.5)); st.session_state['vco_auto'] = float(dv.get('away_league_corners', 4.8))
                         st.session_state['elo_bias'] = (elo_l, elo_v); st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
-                        st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-5:]; st.rerun()
+                        st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-10:]; st.rerun()
 
 # =================================================================
 # 6. CONTENIDO PRINCIPAL
@@ -408,7 +408,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🎲 MONTE CARLO PRO", "🧩 MATRIZ", "📈 AUDITORÍA"])
-    
+
     with t1:
         ga, gb = st.columns(2)
         with ga:
@@ -439,46 +439,28 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         mc = res['MONTECARLO']
         st.markdown("<div class='mc-container'>", unsafe_allow_html=True)
         st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900;'>QUANTUM SIMULATION DASHBOARD</h3>", unsafe_allow_html=True)
-        
-        # Grid de Métricas Principales
         c1, c2, c3, c4 = st.columns(4)
         c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN LOCAL</span><span class='mc-val'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
         c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>DRAW</span><span class='mc-val'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
         c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN AWAY</span><span class='mc-val'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
         c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
-        
-        # --- NUEVA LÓGICA DE FRECUENCIAS (MODAS) ---
         counts_h = np.bincount(mc['SIM_H']); mode_h = np.argmax(counts_h); prob_h = (counts_h[mode_h]/100)
         counts_v = np.bincount(mc['SIM_V']); mode_v = np.argmax(counts_v); prob_v = (counts_v[mode_v]/100)
         scores_sim = [f"{h}-{v}" for h, v in zip(mc['SIM_H'], mc['SIM_V'])]
         mode_score = Counter(scores_sim).most_common(1)[0]
-
         st.markdown("<hr style='border: 0.5px solid #222; margin: 30px 0;'>", unsafe_allow_html=True)
-        
         col_info_l, col_info_v = st.columns(2)
         with col_info_l:
             st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nl_manual}</h5>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--secondary);'>"
-                        f"<span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br>"
-                        f"<span style='font-size:1.4em; font-weight:900;'>{mode_h} GOLES</span> <span style='color:var(--secondary); font-size:0.9em;'>({prob_h:.1f}%)</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--secondary);'><span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br><span style='font-size:1.4em; font-weight:900;'>{mode_h} GOLES</span> <span style='color:var(--secondary); font-size:0.9em;'>({prob_h:.1f}%)</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("xG Proyectado", min(100, xg_l*25), "Potencial", 100, color="#00ffa3")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'>"
-                        f"<span>Luck: {luck_l:.2f}</span><span>Fatiga: {st.session_state['fatiga_l']:.2f}</span><span>ELO: {st.session_state['elo_bias'][0]:.2f}</span></div>", unsafe_allow_html=True)
-
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_l:.2f}</span><span>Fatiga: {st.session_state['fatiga_l']:.2f}</span><span>ELO: {st.session_state['elo_bias'][0]:.2f}</span></div>", unsafe_allow_html=True)
         with col_info_v:
             st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nv_manual}</h5>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--primary);'>"
-                        f"<span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br>"
-                        f"<span style='font-size:1.4em; font-weight:900;'>{mode_v} GOLES</span> <span style='color:var(--primary); font-size:0.9em;'>({prob_v:.1f}%)</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--primary);'><span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br><span style='font-size:1.4em; font-weight:900;'>{mode_v} GOLES</span> <span style='color:var(--primary); font-size:0.9em;'>({prob_v:.1f}%)</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("xG Proyectado", min(100, xg_v*25), "Potencial", 100, color="#d4af37")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'>"
-                        f"<span>Luck: {luck_v:.2f}</span><span>Fatiga: {st.session_state['fatiga_v']:.2f}</span><span>ELO: {st.session_state['elo_bias'][1]:.2f}</span></div>", unsafe_allow_html=True)
-        
-        st.markdown(f"<div style='text-align:center; margin-top:30px; padding:20px; background:#000; border:1px solid #333; border-radius:15px;'>"
-                    f"<span style='color:#666; text-transform:uppercase; letter-spacing:2px; font-size:0.8em;'>Marcador Élite de Simulación</span><br>"
-                    f"<span style='color:var(--primary); font-size:2.5em; font-weight:900; font-family:JetBrains Mono;'>{mode_score[0]}</span><br>"
-                    f"<span style='color:#444; font-size:0.8em;'>Frecuencia: {mode_score[1]/100:.1f}% de las simulaciones</span></div>", unsafe_allow_html=True)
-        
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_v:.2f}</span><span>Fatiga: {st.session_state['fatiga_v']:.2f}</span><span>ELO: {st.session_state['elo_bias'][1]:.2f}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; margin-top:30px; padding:20px; background:#000; border:1px solid #333; border-radius:15px;'><span style='color:#666; text-transform:uppercase; letter-spacing:2px; font-size:0.8em;'>Marcador Élite de Simulación</span><br><span style='color:var(--primary); font-size:2.5em; font-weight:900; font-family:JetBrains Mono;'>{mode_score[0]}</span><br><span style='color:#444; font-size:0.8em;'>Frecuencia: {mode_score[1]/100:.1f}% de las simulaciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10k Sim)", color_discrete_sequence=['#d4af37'], text_auto=True)
         fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee"); st.plotly_chart(fig_hist, use_container_width=True)
@@ -489,58 +471,52 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
 
     with t7:
         st.markdown("<h3 style='color:#fff; font-weight:900;'>CENTRO DE AUDITORÍA Y BACKTESTING</h3>", unsafe_allow_html=True)
-        if st.session_state['audit_results']:
+        if st.session_state.get('audit_results'):
             matches = st.session_state['audit_results']; total_hits = 0; total_picks_count = 0
-            
-            # Función local para validar picks
-            def validate(pick_t, h_s, v_s):
-                total_g = h_s + v_s
+            standings = api_request_cached(ligas_api[nombre_liga])
+
+            def validate_pick(pick_t, h_s, v_s):
+                t_g = h_s + v_s
                 if "1X" in pick_t: return h_s >= v_s
                 if "X2" in pick_t: return v_s >= h_s
                 if "12" in pick_t: return h_s != v_s
-                if "BTTS" in pick_t: return h_s > 0 and v_s > 0
-                if "Over" in pick_t: return total_g > float(pick_t.split(" ")[1])
+                if "BTTS: SÍ" in pick_t: return h_s > 0 and v_s > 0
+                if "Over" in pick_t: return t_g > float(pick_t.split(" ")[1])
                 return False
+
+            def find_stats(t_name, table):
+                if not table: return None
+                names = [t['team_name'] for t in table]
+                match, score = process.extractOne(t_name, names); return next((t for t in table if t['team_name'] == match), None) if score > 70 else None
 
             audit_cards = []
             for m in matches:
                 h_s, v_s = int(m['match_hometeam_score']), int(m['match_awayteam_score'])
-                # Regeneramos los picks de ese partido con el motor actual
-                back_res = motor.procesar(xg_l, xg_v, 4.0, 9.5)
-                pool_back = [{"t": "1X", "p": back_res['DC'][0]}, {"t": "X2", "p": back_res['DC'][1]}, {"t": "BTTS: SÍ", "p": back_res['BTTS'][0]}]
+                h_name, v_name = m['match_hometeam_name'], m['match_awayteam_name']
+                st_l, st_v = find_stats(h_name, standings), find_stats(v_name, standings)
+                if st_l and st_v:
+                    pj_l, pj_v = int(st_l['home_league_payed']) or 1, int(st_v['away_league_payed']) or 1
+                    h_xg_back = (int(st_l['home_league_GF'])/pj_l) * (int(st_v['away_league_GA'])/pj_v) / (p_liga or 2.5)
+                    v_xg_back = (int(st_v['away_league_GF'])/pj_v) * (int(st_l['home_league_GA'])/pj_l) / (p_liga or 2.5)
+                else: h_xg_back, v_xg_back = xg_l, xg_v
+
+                back_res = motor.procesar(h_xg_back, v_xg_back, 4.0, 9.0)
+                a_pool = [{"t": "1X", "p": back_res['DC'][0]}, {"t": "X2", "p": back_res['DC'][1]}, {"t": "12", "p": back_res['DC'][2]}, {"t": "BTTS: SÍ", "p": back_res['BTTS'][0]}]
                 for line, p in back_res['GOLES'].items():
-                    if 1.5 <= line <= 2.5: pool_back.append({"t": f"Over {line}", "p": p[0]})
-                
-                valid_picks = sorted([s for s in pool_back if s['p'] > 72], key=lambda x: x['p'], reverse=True)[:3]
-                desglose_picks = ""
-                for p in valid_picks:
-                    hit = validate(p['t'], h_s, v_s)
-                    total_picks_count += 1
+                    if 1.5 <= line <= 2.5: a_pool.append({"t": f"Over {line}", "p": p[0]})
+
+                sugerencias_audit = sorted([s for s in a_pool if s['p'] > 72], key=lambda x: x['p'], reverse=True)[:3]
+                desglose_html = ""
+                for s in sugerencias_audit:
+                    hit = validate_pick(s['t'], h_s, v_s); total_picks_count += 1
                     if hit: total_hits += 1
-                    desglose_picks += f"<div style='display:flex; justify-content:space-between; margin-top:5px;'><span style='color:#888;'>{p['t']} ({p['p']:.1f}%)</span> <span class='{'hit' if hit else 'miss'}'>{'✓ HIT' if hit else '✗ MISS'}</span></div>"
-                
-                audit_cards.append({"date": m['match_date'], "h": m['match_hometeam_name'], "v": m['match_awayteam_name'], "hs": h_s, "vs": v_s, "picks": desglose_picks})
+                    desglose_html += f"<div style='display:flex; justify-content:space-between; margin-top:5px; padding: 4px 8px; background: rgba(255,255,255,0.02); border-radius: 4px;'><span style='color:#ccc;'>{s['t']} <b style='color:#666; font-size:0.85em;'>({s['p']:.1f}%)</b></span> <span class='{'hit' if hit else 'miss'}' style='font-family:JetBrains Mono;'>{'✓ HIT' if hit else '✗ MISS'}</span></div>"
+                audit_cards.append({"date": m['match_date'], "h": h_name, "v": v_name, "hs": h_s, "vs": v_s, "picks_html": desglose_html})
 
             acc = (total_hits/total_picks_count*100) if total_picks_count > 0 else 0
-            st.markdown(f"""
-                <div style='background: linear-gradient(90deg, #0a0c10, #111); padding: 30px; border-radius: 20px; border: 1px solid #222; text-align: center; margin-bottom: 25px;'>
-                    <span style='color: #666; text-transform: uppercase; letter-spacing: 3px; font-size: 0.8em;'>Precision Score (Híbrido)</span>
-                    <h1 style='color: {"#00ffa3" if acc > 70 else "#d4af37"}; font-size: 4em; margin: 10px 0;'>{acc:.1f}%</h1>
-                    <div style='color: #444; font-family: JetBrains Mono;'>Picks Acertados: {total_hits} de {total_picks_count}</div>
-                </div>
-            """, unsafe_allow_html=True)
-
+            st.markdown(f"<div style='background: linear-gradient(135deg, #0a0c10, #161b22); padding: 30px; border-radius: 20px; border: 1px solid #d4af3733; text-align: center; margin-bottom: 30px;'><span style='color: #666; text-transform: uppercase; letter-spacing: 3px; font-size: 0.8em;'>Backtesting Accuracy</span><h1 style='color: {'#00ffa3' if acc > 70 else '#d4af37'}; font-size: 4em; margin: 10px 0;'>{acc:.1f}%</h1><div style='color: #888; font-family: JetBrains Mono;'>Picks Acertados: {total_hits} de {total_picks_count}</div></div>", unsafe_allow_html=True)
             for card in audit_cards:
-                st.markdown(f"""
-                    <div class="audit-card">
-                        <div style="border-bottom: 1px solid #222; padding-bottom:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-                            <span style="color:#555; font-size:0.7em;">{card['date']}</span>
-                            <div style="font-weight:900; font-size:1.2em;">{card['h']} <span style="color:var(--primary);">{card['hs']}-{card['vs']}</span> {card['v']}</div>
-                            <span class="mini-badge">Backtesting Match</span>
-                        </div>
-                        {card['picks']}
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"<div class='audit-card'><div style='border-bottom: 1px solid #222; padding-bottom:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;'><span style='color:#555; font-size:0.75em; font-family:JetBrains Mono;'>{card['date']}</span><div style='font-weight:900; font-size:1.1em;'>{card['h']} <span style='color:var(--primary);'>{card['hs']} - {card['vs']}</span> {card['v']}</div><span class='mini-badge'>Finalizado</span></div>{card['picks_html']}</div>", unsafe_allow_html=True)
         else: st.warning("Sincroniza una liga para activar el backtesting.")
 
 st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v6.8 | QUANTUM MONTE CARLO & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)

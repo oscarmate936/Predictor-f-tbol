@@ -133,7 +133,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO DIXON-COLES + MC PRO CORE
+# 3. MOTOR MATEMÁTICO DIXON-COLES + MC PRO CORE (HÍBRIDO)
 # =================================================================
 
 class MotorMatematico:
@@ -154,78 +154,84 @@ class MotorMatematico:
         return 1.0
 
     def procesar(self, xg_l, xg_v, tj_total, co_total):
-        p1, px, p2, btts_si = 0.0, 0.0, 0.0, 0.0
+        # 1. CÁLCULO ANALÍTICO (DIXON-COLES)
+        p1_d, px_d, p2_d, btts_d = 0.0, 0.0, 0.0, 0.0
         marcadores, matriz = {}, []
         g_lines = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]; h_lines = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]
-        g_probs = {t: [0.0, 0.0] for t in g_lines}
-        h_probs_l = {h: 0.0 for h in h_lines}; h_probs_v = {h: 0.0 for h in h_lines}
+        g_probs_d = {t: [0.0, 0.0] for t in g_lines}
+        h_probs_l_d = {h: 0.0 for h in h_lines}; h_probs_v_d = {h: 0.0 for h in h_lines}
 
         for i in range(10): 
             fila = []
             for j in range(10):
                 p = max(0, (self.poisson_prob(i, xg_l) * self.poisson_prob(j, xg_v)) * self.dixon_coles_ajuste(i, j, xg_l, xg_v))
-                if i > j: p1 += p
-                elif i == j: px += p
-                else: p2 += p
-                if i > 0 and j > 0: btts_si += p
+                if i > j: p1_d += p
+                elif i == j: px_d += p
+                else: p2_d += p
+                if i > 0 and j > 0: btts_d += p
                 for t in g_lines:
-                    if (i + j) > t: g_probs[t][0] += p
-                    else: g_probs[t][1] += p
+                    if (i + j) > t: g_probs_d[t][0] += p
+                    else: g_probs_d[t][1] += p
                 for h in h_lines:
-                    if (i + h) > j: h_probs_l[h] += p
-                    if (j + h) > i: h_probs_v[h] += p
+                    if (i + h) > j: h_probs_l_d[h] += p
+                    if (j + h) > i: h_probs_v_d[h] += p
                 if i <= 4 and j <= 4: marcadores[f"{i}-{j}"] = p * 100
                 if i < 6 and j < 6: fila.append(p * 100)
             if i < 6: matriz.append(fila)
 
-        total = max(0.0001, p1 + px + p2)
+        total_d = max(0.0001, p1_d + px_d + p2_d)
 
-        if st.session_state['market_bias']:
-            m1, mx, m2 = st.session_state['market_bias']
-            p1 = (p1/total * 0.75) + (m1 * 0.25)
-            px = (px/total * 0.75) + (mx * 0.25)
-            p2 = (p2/total * 0.75) + (m2 * 0.25)
-            total = p1 + px + p2
-
-        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
-        if st.session_state['market_bias']:
-            m_l, _, _ = st.session_state['market_bias']
-            if abs((p1/total) - m_l) > 0.15: confianza *= 0.85
-
-        # --- MONTE CARLO PRO CORE ---
+        # 2. CÁLCULO ESTOCÁSTICO (MONTE CARLO PRO)
         sim_h = np.random.poisson(xg_l, 10000)
         sim_v = np.random.poisson(xg_v, 10000)
-        tot_g = sim_h + sim_v
-        margen = sim_h - sim_v
+        tot_g_sim = sim_h + sim_v
+        margen_sim = sim_h - sim_v
+        
+        p1_mc = (sim_h > sim_v).mean()
+        px_mc = (sim_h == sim_v).mean()
+        p2_mc = (sim_v > sim_h).mean()
+        btts_mc = ((sim_h > 0) & (sim_v > 0)).mean()
+        
+        # 3. MEZCLA CUÁNTICA (70% Dixon / 30% MC)
+        W_D, W_MC = 0.70, 0.30
+        p1_f = (p1_d/total_d * W_D) + (p1_mc * W_MC)
+        px_f = (px_d/total_d * W_D) + (px_mc * W_MC)
+        p2_f = (p2_d/total_d * W_D) + (p2_mc * W_MC)
+        btts_f = (btts_d/total_d * W_D) + (btts_mc * W_MC)
+        
+        total_f = p1_f + px_f + p2_f
+
+        # Ajuste de Mercado
+        if st.session_state['market_bias']:
+            m1, mx, m2 = st.session_state['market_bias']
+            p1_f = (p1_f/total_f * 0.75) + (m1 * 0.25)
+            px_f = (px_f/total_f * 0.75) + (mx * 0.25)
+            p2_f = (p2_f/total_f * 0.75) + (m2 * 0.25)
+            total_f = p1_f + px_f + p2_f
+
+        confianza = 1 - (abs(xg_l - xg_v) / (xg_l + xg_v + 1.8))
         
         mc_data = {
-            "L": (sim_h > sim_v).mean() * 100,
-            "X": (sim_h == sim_v).mean() * 100,
-            "V": (sim_v > sim_h).mean() * 100,
-            "CS_L": (sim_v == 0).mean() * 100,
-            "CS_V": (sim_h == 0).mean() * 100,
-            "G_0_1": (tot_g <= 1).mean() * 100,
-            "G_2_3": ((tot_g >= 2) & (tot_g <= 3)).mean() * 100,
-            "G_4_MAS": (tot_g >= 4).mean() * 100,
-            "M_L1": (margen == 1).mean() * 100,
-            "M_L2": (margen == 2).mean() * 100,
-            "M_L3": (margen >= 3).mean() * 100,
-            "M_V1": (margen == -1).mean() * 100,
-            "M_V2": (margen == -2).mean() * 100,
-            "M_V3": (margen <= -3).mean() * 100,
-            "VOLATILITY": np.std(tot_g),
-            "RAW_TOTALS": tot_g
+            "L": p1_mc * 100, "X": px_mc * 100, "V": p2_mc * 100,
+            "CS_L": (sim_v == 0).mean() * 100, "CS_V": (sim_h == 0).mean() * 100,
+            "G_0_1": (tot_g_sim <= 1).mean() * 100,
+            "G_2_3": ((tot_g_sim >= 2) & (tot_g_sim <= 3)).mean() * 100,
+            "G_4_MAS": (tot_g_sim >= 4).mean() * 100,
+            "M_L1": (margen_sim == 1).mean() * 100, "M_L2": (margen_sim == 2).mean() * 100, "M_L3": (margen_sim >= 3).mean() * 100,
+            "M_V1": (margen_sim == -1).mean() * 100, "M_V2": (margen_sim == -2).mean() * 100, "M_V3": (margen_sim <= -3).mean() * 100,
+            "VOLATILITY": np.std(tot_g_sim), "RAW_TOTALS": tot_g_sim
         }
 
         sim_tj = np.random.poisson(tj_total, 15000)
         sim_co = np.random.poisson(co_total, 15000)
 
         return {
-            "1X2": (p1/total*100, px/total*100, p2/total*100), 
-            "DC": ((p1+px)/total*100, (p2+px)/total*100, (p1+p2)/total*100),
-            "BTTS": (btts_si/total*100, (1 - btts_si/total)*100), 
-            "GOLES": {t: (p[0]/total*100, p[1]/total*100) for t, p in g_probs.items()},
-            "HANDICAPS": {"L": {h: v/total*100 for h,v in h_probs_l.items()}, "V": {h: v/total*100 for h,v in h_probs_v.items()}},
+            "1X2": (p1_f/total_f*100, px_f/total_f*100, p2_f/total_f*100), 
+            "DC": ((p1_f+px_f)/total_f*100, (p2_f+px_f)/total_f*100, (p1_f+p2_f)/total_f*100),
+            "BTTS": (btts_f*100, (1 - btts_f)*100), 
+            "GOLES": {t: ((g_probs_d[t][0]/total_d * W_D + (tot_g_sim > t).mean() * W_MC)*100, (g_probs_d[t][1]/total_d * W_D + (tot_g_sim <= t).mean() * W_MC)*100) for t in g_lines},
+            "HANDICAPS": {"L": {h: (h_probs_l_d[h]/total_d*100*W_D + (sim_h + h > sim_v).mean()*100*W_MC) for h in h_lines}, 
+                          "V": {h: (h_probs_v_d[h]/total_d*100*W_D + (sim_v + h > sim_h).mean()*100*W_MC) for h in h_lines}},
             "TARJETAS": {t: (np.sum(sim_tj > t)/150, np.sum(sim_tj <= t)/150) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
             "CORNERS": {t: (np.sum(sim_co > t)/150, np.sum(sim_co <= t)/150) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
@@ -249,10 +255,8 @@ st.markdown("""
     .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
     .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
-    
-    /* MC PRO REDESIGN */
     .mc-container { background: #080a0e; border: 1px solid #1a1e26; border-radius: 20px; padding: 30px; }
-    .mc-stat-box { background: linear-gradient(180deg, #11151c 0%, #0a0c10 100%); border: 1px solid #222; padding: 20px; border-radius: 16px; text-align: center; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    .mc-stat-box { background: linear-gradient(180deg, #11151c 0%, #0a0c10 100%); border: 1px solid #222; padding: 20px; border-radius: 16px; text-align: center; }
     .mc-val { font-size: 1.8em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; display: block; }
     .mc-lab { font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 2px; }
     </style>
@@ -479,7 +483,7 @@ if generar:
                 st.markdown(f"• Gana por 3+ goles: **{mc['M_V3']:.1f}%**")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.info("💡 Este reporte utiliza un muestreo aleatorio sistemático para detectar variaciones en el xG proyectado.")
+            st.info("💡 Este reporte combina Dixon-Coles (Analítico) con Monte Carlo (Simulado) para maximizar la estabilidad del pick.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with t6:

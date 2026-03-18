@@ -133,7 +133,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO DIXON-COLES + MONTE CARLO CORE
+# 3. MOTOR MATEMÁTICO DIXON-COLES + MC PRO CORE
 # =================================================================
 
 class MotorMatematico:
@@ -192,18 +192,24 @@ class MotorMatematico:
             m_l, _, _ = st.session_state['market_bias']
             if abs((p1/total) - m_l) > 0.15: confianza *= 0.85
 
-        # MONTE CARLO CORE
+        # --- MONTE CARLO PRO CORE ---
         sim_h = np.random.poisson(xg_l, 10000)
         sim_v = np.random.poisson(xg_v, 10000)
         tot_g = sim_h + sim_v
+        margen = sim_h - sim_v
         
         mc_data = {
             "L": (sim_h > sim_v).mean() * 100,
             "X": (sim_h == sim_v).mean() * 100,
             "V": (sim_v > sim_h).mean() * 100,
+            "CS_L": (sim_v == 0).mean() * 100,
+            "CS_V": (sim_h == 0).mean() * 100,
             "G_0_1": (tot_g <= 1).mean() * 100,
             "G_2_3": ((tot_g >= 2) & (tot_g <= 3)).mean() * 100,
             "G_4_MAS": (tot_g >= 4).mean() * 100,
+            "M_L1": (margen == 1).mean() * 100,
+            "M_L2": (margen == 2).mean() * 100,
+            "M_L3": (margen >= 3).mean() * 100,
             "VOLATILITY": np.std(tot_g),
             "RAW_TOTALS": tot_g
         }
@@ -241,10 +247,11 @@ st.markdown("""
     .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
     .whatsapp-btn { display: flex; align-items: center; justify-content: center; background: #25D366; color: white !important; padding: 14px; border-radius: 14px; text-decoration: none; font-weight: 700; margin-top: 5px; }
     
-    /* MC PRO Styles */
-    .mc-stat-card { background: #0a0c10; border: 1px solid #1a1a1a; padding: 20px; border-radius: 15px; text-align: center; }
-    .mc-value { font-size: 1.6em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; }
-    .mc-label { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+    /* MC PRO REDESIGN */
+    .mc-container { background: #080a0e; border: 1px solid #1a1e26; border-radius: 20px; padding: 30px; }
+    .mc-stat-box { background: linear-gradient(180deg, #11151c 0%, #0a0c10 100%); border: 1px solid #222; padding: 20px; border-radius: 16px; text-align: center; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    .mc-val { font-size: 1.8em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; display: block; }
+    .mc-lab { font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 2px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -433,29 +440,36 @@ if generar:
 
     with t5:
         mc = res['MONTECARLO']
-        st.markdown("<div style='background: linear-gradient(90deg, #0a0c10, #141923); padding: 25px; border-radius: 20px; border: 1px solid #222; margin-bottom: 25px;'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='color:#fff; text-align:center; margin-bottom:20px;'>INSTITUTIONAL SIMULATION REPORT <span style='color:#d4af37; font-size:0.6em;'>10,000 ITERATIONS</span></h3>", unsafe_allow_html=True)
+        st.markdown("<div class='mc-container'>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900;'>INSTITUTIONAL SIMULATION REPORT <span style='color:#d4af37; font-size:0.6em;'>10,000 ITERATIONS</span></h3>", unsafe_allow_html=True)
         
         c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Win</div><div class='mc-value'>{mc['L']:.1f}%</div></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Draw</div><div class='mc-value'>{mc['X']:.1f}%</div></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Expected Loss</div><div class='mc-value'>{mc['V']:.1f}%</div></div>", unsafe_allow_html=True)
-        c4.markdown(f"<div class='mc-stat-card'><div class='mc-label'>Volatility</div><div class='mc-value'>{mc['VOLATILITY']:.2f}</div></div>", unsafe_allow_html=True)
+        c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED WIN</span><span class='mc-val'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED DRAW</span><span class='mc-val'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED LOSS</span><span class='mc-val'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
+        c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
         
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br><hr style='opacity:0.1;'><br>", unsafe_allow_html=True)
         
-        ca, cb = st.columns([1.5, 1])
+        ca, cb = st.columns([1.6, 1])
         with ca:
             df_hist = pd.DataFrame({"Goles": mc['RAW_TOTALS']})
-            fig_hist = px.histogram(df_hist, x="Goles", nbins=15, title="PROBABILITY DENSITY: TOTAL GOALS", color_discrete_sequence=['#00ffa3'], text_auto=True)
-            fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", bargap=0.1)
+            fig_hist = px.histogram(df_hist, x="Goles", nbins=15, title="PROBABILITY DENSITY: TOTAL GOALS", color_discrete_sequence=['#d4af37'], text_auto=True)
+            fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", bargap=0.1, xaxis_title="GOLES", yaxis_title="FRECUENCIA")
+            fig_hist.update_traces(marker_line_width=1, marker_line_color="#000")
             st.plotly_chart(fig_hist, use_container_width=True)
         with cb:
-            st.markdown("<h5 style='color:#fff;'>ZONAS DE PROBABILIDAD</h5>", unsafe_allow_html=True)
-            dual_bar_explicit("Bajo (0-1 Goles)", mc['G_0_1'], "", 100-mc['G_0_1'], color="#666")
-            dual_bar_explicit("Medio (2-3 Goles)", mc['G_2_3'], "", 100-mc['G_2_3'], color="#d4af37")
-            dual_bar_explicit("Alto (4+ Goles)", mc['G_4_MAS'], "", 100-mc['G_4_MAS'], color="#00ffa3")
-            st.warning("⚠️ Volatilidad alta indica que el partido puede tener resultados imprevisibles fuera de la media.")
+            st.markdown("<h5 style='color:#fff; font-weight:800; border-left: 3px solid var(--primary); padding-left:10px;'>DEEP QUANTUM METRICS</h5>", unsafe_allow_html=True)
+            dual_bar_explicit("Clean Sheet (L)", mc['CS_L'], "", 100-mc['CS_L'], color="#00ffa3")
+            dual_bar_explicit("Clean Sheet (V)", mc['CS_V'], "", 100-mc['CS_V'], color="#d4af37")
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<h6 style='color:#666; font-size:0.8em; text-transform:uppercase;'>Winning Margins (Home)</h6>", unsafe_allow_html=True)
+            st.markdown(f"• Win by 1 goal: **{mc['M_L1']:.1f}%**")
+            st.markdown(f"• Win by 2 goals: **{mc['M_L2']:.1f}%**")
+            st.markdown(f"• Win by 3+ goals: **{mc['M_L3']:.1f}%**")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.info("💡 Este reporte utiliza un muestreo aleatorio sistemático para detectar variaciones en el xG proyectado.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with t6:

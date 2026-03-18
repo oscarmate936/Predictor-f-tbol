@@ -11,7 +11,7 @@ import time
 from collections import Counter
 
 # =================================================================
-# 1. CONFIGURACIÓN API & ESTADO (MANTENIDO)
+# 1. CONFIGURACIÓN API & ESTADO (ACTUALIZADO CON CONTEXTO)
 # =================================================================
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
@@ -19,6 +19,7 @@ BASE_URL = "https://apiv3.apifootball.com/"
 tz_sv = timezone(timedelta(hours=-6))
 ahora_sv = datetime.now(tz_sv)
 
+# Estados de sesión originales
 if 'nl_auto' not in st.session_state: st.session_state['nl_auto'] = "Local"
 if 'nv_auto' not in st.session_state: st.session_state['nv_auto'] = "Visitante"
 if 'elo_bias' not in st.session_state: st.session_state['elo_bias'] = (1.0, 1.0)
@@ -34,6 +35,12 @@ if 'proxy_xg_l' not in st.session_state: st.session_state['proxy_xg_l'] = 1.5
 if 'proxy_xg_v' not in st.session_state: st.session_state['proxy_xg_v'] = 1.2
 if 'luck_factor' not in st.session_state: st.session_state['luck_factor'] = (1.0, 1.0)
 
+# NUEVOS ESTADOS PARA CONTEXTO DE COMPETICIÓN
+if 'stake_l' not in st.session_state: st.session_state['stake_l'] = 1.0
+if 'stake_v' not in st.session_state: st.session_state['stake_v'] = 1.0
+if 'tag_l' not in st.session_state: st.session_state['tag_l'] = "Estándar"
+if 'tag_v' not in st.session_state: st.session_state['tag_v'] = "Estándar"
+
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
     'lgf_auto': 1.7, 'lgc_auto': 1.2, 'vgf_auto': 1.5, 'vgc_auto': 1.1,
@@ -43,8 +50,30 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (MANTENIDO)
+# 2. FUNCIONES DE LÓGICA ELITE (CON MOTOR DE CONTEXTO)
 # =================================================================
+
+def analyze_competition_stakes(standings, team_id):
+    """Analiza la urgencia de puntos basado en la tabla."""
+    if not standings or not isinstance(standings, list): return 1.0, "Estándar"
+    try:
+        total_teams = len(standings)
+        team_data = next((t for t in standings if t['team_id'] == team_id), None)
+        if not team_data: return 1.0, "Estándar"
+        
+        pos = int(team_data.get('overall_league_position', 10))
+        pts = int(team_data.get('overall_league_PTS', 0))
+        pj = int(team_data.get('overall_league_payed', 0))
+        restantes = ((total_teams - 1) * 2) - pj
+        
+        # Stakes dinámicos
+        if restantes <= 6: # Recta final
+            if pos <= 3: return 1.15, "CRÍTICO: TÍTULO"
+            if pos >= total_teams - 3: return 1.18, "CRÍTICO: DESCENSO"
+            if 4 <= pos <= 7: return 1.10, "ALTA: COPAS"
+            if 8 <= pos <= total_teams - 4: return 0.85, "BAJA: SIN OBJETIVOS"
+        return 1.0, "Estándar"
+    except: return 1.0, "Estándar"
 
 def api_request_live(action, params=None):
     if params is None: params = {}
@@ -159,7 +188,7 @@ def get_h2h_data(team_id_l, team_id_v):
     return 0.95 + (l_pts/total * 0.1), 0.95 + (v_pts/total * 0.1)
 
 # =================================================================
-# 3. MOTOR MATEMÁTICO (MANTENIDO)
+# 3. MOTOR MATEMÁTICO (MANTENIDO CON LOGICA DE STAKE)
 # =================================================================
 
 class MotorMatematico:
@@ -271,6 +300,7 @@ st.markdown("""
     .hit { color: var(--secondary); font-weight: 900; }
     .miss { color: #ff4b4b; font-weight: 900; }
     .mini-badge { background: #111; padding: 4px 8px; border-radius: 5px; font-size: 0.75em; font-family: 'JetBrains Mono'; color: #888; border: 1px solid #222; }
+    .motivation-tag { background: rgba(212, 175, 55, 0.1); color: var(--primary); padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: 700; border: 1px solid var(--primary); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -304,7 +334,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (MANTENIDO)
+# 5. SIDEBAR (MANTENIDO + ANALISIS DE STAKE)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v6.8</h2>", unsafe_allow_html=True)
@@ -335,6 +365,12 @@ with st.sidebar:
                         nombres = [t['team_name'] for t in standings]; m, s = process.extractOne(n, nombres); return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
                     dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
                     if dl and dv:
+                        # ANALISIS DE STAKE AUTOMATICO
+                        sl, tl = analyze_competition_stakes(standings, dl['team_id'])
+                        sv, tv = analyze_competition_stakes(standings, dv['team_id'])
+                        st.session_state['stake_l'], st.session_state['tag_l'] = sl, tl
+                        st.session_state['stake_v'], st.session_state['tag_v'] = sv, tv
+                        
                         phl, pav = int(dl['home_league_payed']), int(dv['away_league_payed'])
                         st.session_state['hfa_specific'] = ((int(dl['home_league_GF'])/phl) / (int(dl['overall_league_GF'])/int(dl['overall_league_payed'])) if phl>0 else 1.1, (int(dv['away_league_GF'])/pav) / (int(dv['overall_league_GF'])/int(dv['overall_league_payed'])) if pav>0 else 0.9)
                         cb_l, pxg_l = get_team_tactical_stats(dl['team_id'], ligas_api[nombre_liga]); cb_v, pxg_v = get_team_tactical_stats(dv['team_id'], ligas_api[nombre_liga])
@@ -358,14 +394,14 @@ st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; mar
 
 col_l, col_v = st.columns(2)
 with col_l:
-    st.markdown("<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900;'>LOCAL</h6></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='border-right: 2px solid var(--secondary); text-align: right; padding-right: 15px; margin-bottom: 5px;'><h6 style='color:var(--secondary); margin:0; font-weight:900;'>LOCAL <span class='motivation-tag'>{st.session_state['tag_l']}</span></h6></div>", unsafe_allow_html=True)
     nl_manual = st.text_input("Nombre Local", value=st.session_state['nl_auto'], label_visibility="collapsed")
     la, lb = st.columns(2)
     lgf, lgc = la.number_input("GF Local", 0.0, 10.0, key='lgf_auto'), lb.number_input("GC Local", 0.0, 10.0, key='lgc_auto')
     ltj, lco = la.number_input("Tarjetas L", 0.0, 15.0, key='ltj_auto'), lb.number_input("Corners L", 0.0, 20.0, key='lco_auto')
 
 with col_v:
-    st.markdown("<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900;'>VISITANTE</h6></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='border-left: 2px solid var(--primary); text-align: left; padding-left: 15px; margin-bottom: 5px;'><h6 style='color:var(--primary); margin:0; font-weight:900;'>VISITANTE <span class='motivation-tag'>{st.session_state['tag_v']}</span></h6></div>", unsafe_allow_html=True)
     nv_manual = st.text_input("Nombre Visita", value=st.session_state['nv_auto'], label_visibility="collapsed")
     va, vb = st.columns(2)
     vgf, vgc = va.number_input("GF Visita", 0.0, 10.0, key='vgf_auto'), vb.number_input("GC Visita", 0.0, 10.0, key='vgc_auto')
@@ -383,10 +419,22 @@ ref_avg = rc2.number_input("Promedio Tarjetas", 0.0, 15.0, value=0.0, step=0.1);
 if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     motor = MotorMatematico(league_avg=p_liga, draw_freq=st.session_state['draw_freq'])
     hfa_base = st.session_state['hfa_league']; hfa_l_spec, hfa_v_spec = st.session_state['hfa_specific']; luck_l, luck_v = st.session_state['luck_factor']
+    
+    # NUEVA LOGICA DE MOTIVACION APLICADA AL xG
+    stake_l = st.session_state['stake_l']
+    stake_v = st.session_state['stake_v']
+    diff_motivation = stake_l / stake_v
+    
     ataque_l = (lgf * 0.5) + (st.session_state['proxy_xg_l'] * 0.5); ataque_v = (vgf * 0.5) + (st.session_state['proxy_xg_v'] * 0.5)
-    xg_l = (ataque_l/p_liga)*(vgc/p_liga)*p_liga * (hfa_base * hfa_l_spec) * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l'] * luck_l
-    xg_v = (ataque_v/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v'] * luck_v
+    
+    # AJUSTE QUANTUM: Multiplicamos por el diferencial de motivación
+    xg_l = (ataque_l/p_liga)*(vgc/p_liga)*p_liga * (hfa_base * hfa_l_spec) * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l'] * luck_l * diff_motivation
+    xg_v = (ataque_v/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v'] * luck_v * (1/diff_motivation)
+    
+    # AJUSTE DE TARJETAS POR IMPORTANCIA
     tj_final = ( (ltj + vtj) * 0.4 + (ref_avg * 0.6) ) if ref_avg > 0 else (ltj + vtj)
+    if stake_l > 1.1 or stake_v > 1.1: tj_final *= 1.15 # Partidos críticos = más tarjetas
+    
     cb_l, cb_v = st.session_state['corner_bias']; co_final = (lco * cb_l) + (vco * cb_v)
     res = motor.procesar(xg_l, xg_v, tj_final, co_final)
 
@@ -408,7 +456,8 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🎲 MONTE CARLO PRO", "🧩 MATRIZ", "📈 AUDITORÍA"])
-
+    # ... (Resto de los tabs se mantienen igual ya que usan el objeto 'res' actualizado)
+    
     with t1:
         ga, gb = st.columns(2)
         with ga:
@@ -454,12 +503,12 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nl_manual}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--secondary);'><span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br><span style='font-size:1.4em; font-weight:900;'>{mode_h} GOLES</span> <span style='color:var(--secondary); font-size:0.9em;'>({prob_h:.1f}%)</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("xG Proyectado", min(100, xg_l*25), "Potencial", 100, color="#00ffa3")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_l:.2f}</span><span>Fatiga: {st.session_state['fatiga_l']:.2f}</span><span>ELO: {st.session_state['elo_bias'][0]:.2f}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_l:.2f}</span><span>Stake: {st.session_state['stake_l']:.2f}</span><span>ELO: {st.session_state['elo_bias'][0]:.2f}</span></div>", unsafe_allow_html=True)
         with col_info_v:
             st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nv_manual}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--primary);'><span style='color:#666; font-size:0.75em;'>GOLES MÁS REPETIDOS</span><br><span style='font-size:1.4em; font-weight:900;'>{mode_v} GOLES</span> <span style='color:var(--primary); font-size:0.9em;'>({prob_v:.1f}%)</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("xG Proyectado", min(100, xg_v*25), "Potencial", 100, color="#d4af37")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_v:.2f}</span><span>Fatiga: {st.session_state['fatiga_v']:.2f}</span><span>ELO: {st.session_state['elo_bias'][1]:.2f}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_v:.2f}</span><span>Stake: {st.session_state['stake_v']:.2f}</span><span>ELO: {st.session_state['elo_bias'][1]:.2f}</span></div>", unsafe_allow_html=True)
         st.markdown(f"<div style='text-align:center; margin-top:30px; padding:20px; background:#000; border:1px solid #333; border-radius:15px;'><span style='color:#666; text-transform:uppercase; letter-spacing:2px; font-size:0.8em;'>Marcador Élite de Simulación</span><br><span style='color:var(--primary); font-size:2.5em; font-weight:900; font-family:JetBrains Mono;'>{mode_score[0]}</span><br><span style='color:#444; font-size:0.8em;'>Frecuencia: {mode_score[1]/100:.1f}% de las simulaciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10k Sim)", color_discrete_sequence=['#d4af37'], text_auto=True)

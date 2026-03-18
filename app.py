@@ -210,6 +210,9 @@ class MotorMatematico:
             "M_L1": (margen == 1).mean() * 100,
             "M_L2": (margen == 2).mean() * 100,
             "M_L3": (margen >= 3).mean() * 100,
+            "M_V1": (margen == -1).mean() * 100,
+            "M_V2": (margen == -2).mean() * 100,
+            "M_V3": (margen <= -3).mean() * 100,
             "VOLATILITY": np.std(tot_g),
             "RAW_TOTALS": tot_g
         }
@@ -441,32 +444,39 @@ if generar:
     with t5:
         mc = res['MONTECARLO']
         st.markdown("<div class='mc-container'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900;'>INSTITUTIONAL SIMULATION REPORT <span style='color:#d4af37; font-size:0.6em;'>10,000 ITERATIONS</span></h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900;'>REPORTE DE SIMULACIÓN INSTITUCIONAL <span style='color:#d4af37; font-size:0.6em;'>10,000 ITERACIONES</span></h3>", unsafe_allow_html=True)
         
         c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED WIN</span><span class='mc-val'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED DRAW</span><span class='mc-val'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EXPECTED LOSS</span><span class='mc-val'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
-        c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
+        c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VICTORIA LOCAL</span><span class='mc-val'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>EMPATE ESPERADO</span><span class='mc-val'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VICTORIA VISITA</span><span class='mc-val'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
+        c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILIDAD</span><span class='mc-val'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
         
         st.markdown("<br><hr style='opacity:0.1;'><br>", unsafe_allow_html=True)
         
         ca, cb = st.columns([1.6, 1])
         with ca:
             df_hist = pd.DataFrame({"Goles": mc['RAW_TOTALS']})
-            fig_hist = px.histogram(df_hist, x="Goles", nbins=15, title="PROBABILITY DENSITY: TOTAL GOALS", color_discrete_sequence=['#d4af37'], text_auto=True)
+            fig_hist = px.histogram(df_hist, x="Goles", nbins=15, title="DENSIDAD DE PROBABILIDAD: TOTAL DE GOLES", color_discrete_sequence=['#d4af37'], text_auto=True)
             fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", bargap=0.1, xaxis_title="GOLES", yaxis_title="FRECUENCIA")
             fig_hist.update_traces(marker_line_width=1, marker_line_color="#000")
             st.plotly_chart(fig_hist, use_container_width=True)
         with cb:
-            st.markdown("<h5 style='color:#fff; font-weight:800; border-left: 3px solid var(--primary); padding-left:10px;'>DEEP QUANTUM METRICS</h5>", unsafe_allow_html=True)
-            dual_bar_explicit("Clean Sheet (L)", mc['CS_L'], "", 100-mc['CS_L'], color="#00ffa3")
-            dual_bar_explicit("Clean Sheet (V)", mc['CS_V'], "", 100-mc['CS_V'], color="#d4af37")
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<h6 style='color:#666; font-size:0.8em; text-transform:uppercase;'>Winning Margins (Home)</h6>", unsafe_allow_html=True)
-            st.markdown(f"• Win by 1 goal: **{mc['M_L1']:.1f}%**")
-            st.markdown(f"• Win by 2 goals: **{mc['M_L2']:.1f}%**")
-            st.markdown(f"• Win by 3+ goals: **{mc['M_L3']:.1f}%**")
+            st.markdown("<h5 style='color:#fff; font-weight:800; border-left: 3px solid var(--primary); padding-left:10px;'>MÉTRICAS CUÁNTICAS</h5>", unsafe_allow_html=True)
+            dual_bar_explicit(f"Portería a Cero ({nl_manual})", mc['CS_L'], "", 100-mc['CS_L'], color="#00ffa3")
+            dual_bar_explicit(f"Portería a Cero ({nv_manual})", mc['CS_V'], "", 100-mc['CS_V'], color="#d4af37")
+            
+            m_l, m_v = st.columns(2)
+            with m_l:
+                st.markdown(f"<h6 style='color:#666; font-size:0.75em; text-transform:uppercase;'>Márgenes Local ({nl_manual})</h6>", unsafe_allow_html=True)
+                st.markdown(f"• Gana por 1 gol: **{mc['M_L1']:.1f}%**")
+                st.markdown(f"• Gana por 2 goles: **{mc['M_L2']:.1f}%**")
+                st.markdown(f"• Gana por 3+ goles: **{mc['M_L3']:.1f}%**")
+            with m_v:
+                st.markdown(f"<h6 style='color:#666; font-size:0.75em; text-transform:uppercase;'>Márgenes Visita ({nv_manual})</h6>", unsafe_allow_html=True)
+                st.markdown(f"• Gana por 1 gol: **{mc['M_V1']:.1f}%**")
+                st.markdown(f"• Gana por 2 goles: **{mc['M_V2']:.1f}%**")
+                st.markdown(f"• Gana por 3+ goles: **{mc['M_V3']:.1f}%**")
             
             st.markdown("<br>", unsafe_allow_html=True)
             st.info("💡 Este reporte utiliza un muestreo aleatorio sistemático para detectar variaciones en el xG proyectado.")

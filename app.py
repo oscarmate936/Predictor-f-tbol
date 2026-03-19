@@ -462,7 +462,14 @@ importancia_global = max(st.session_state['stake_l'], st.session_state['stake_v'
 color_imp = "#00ffa3" if importancia_global < 1.1 else ("#d4af37" if importancia_global < 1.2 else "#ff4b4b")
 txt_imp = "Fase Regular / Normal" if importancia_global < 1.1 else ("Alta Importancia / Tensión" if importancia_global < 1.2 else "CRÍTICO / A MUERTE")
 
-st.markdown(f"<div style='text-align: center; margin-top: -20px; margin-bottom: 30px;'><span style='background: rgba(255,255,255,0.05); padding: 8px 15px; border-radius: 20px; border: 1px solid {color_imp}; color: {color_imp}; font-weight: 900; font-size: 0.9em; letter-spacing: 1px;'>🔥 CONTEXTO DEL PARTIDO: {txt_imp}</span></div>", unsafe_allow_html=True)
+st.markdown(f"""
+    <div style='text-align: center; margin-top: -20px; margin-bottom: 30px;'>
+        <div style='display: inline-block; background: rgba(255,255,255,0.03); padding: 12px 30px; border-radius: 16px; border: 1px solid {color_imp};'>
+            <div style='color: #888; font-size: 0.8em; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;'>🔥 Contexto del Partido</div>
+            <div style='color: {color_imp}; font-weight: 900; font-size: 1.15em; letter-spacing: 1px;'>{txt_imp}</div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 # -----------------------------------------------
 
 col_l, col_v = st.columns(2)

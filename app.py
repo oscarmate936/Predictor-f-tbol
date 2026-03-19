@@ -54,22 +54,63 @@ for key, val in defaults.items():
 # 2. FUNCIONES DE LÓGICA ELITE (ACTUALIZADAS)
 # =================================================================
 
-def analyze_competition_stakes(standings, team_id):
-    if not standings or not isinstance(standings, list): return 1.0, "Estándar"
+def analyze_competition_stakes(standings, team_id, league_id):
+    ligas_top = [152, 302, 207, 175, 168, 307, 322]
+    ligas_playoffs = [601, 99, 100, 103]
+    copas = [3, 4, 683, 13, 145, 146, 300, 209, 177, 169, 603]
+
+    if league_id in copas:
+        return 1.25, "CRÍTICO: ELIMINATORIA / COPA"
+
+    if not standings or not isinstance(standings, list): 
+        return 1.0, "Estándar: Sin Datos"
+        
     try:
         total_teams = len(standings)
         team_data = next((t for t in standings if t['team_id'] == team_id), None)
         if not team_data: return 1.0, "Estándar"
+        
         pos = int(team_data.get('overall_league_position', 10))
         pj = int(team_data.get('overall_league_payed', 0))
-        restantes = ((total_teams - 1) * 2) - pj
-        if restantes <= 6:
-            if pos <= 3: return 1.15, "CRÍTICO: TÍTULO"
-            if pos >= total_teams - 3: return 1.18, "CRÍTICO: DESCENSO"
-            if 4 <= pos <= 7: return 1.10, "ALTA: COPAS"
-            if 8 <= pos <= total_teams - 4: return 0.85, "BAJA: SIN OBJETIVOS"
+        
+        total_jornadas = (total_teams - 1) * 2
+        restantes = total_jornadas - pj
+        
+        urgencia = 1.0
+        if restantes <= 3: urgencia = 1.20
+        elif restantes <= 7: urgencia = 1.10
+        elif restantes <= 12: urgencia = 1.05
+
+        if league_id in ligas_top:
+            if restantes <= 12:
+                if pos == 1: return 1.15 * urgencia, "CRÍTICO: LIDERATO"
+                elif 2 <= pos <= 4: return 1.10 * urgencia, "ALTA: ZONA CHAMPIONS"
+                elif 5 <= pos <= 7: return 1.08 * urgencia, "ALTA: ZONA EUROPA"
+                elif pos >= total_teams - 3: return 1.25 * urgencia, "CRÍTICO: PELIGRO DESCENSO"
+                elif pos >= total_teams - 5: return 1.05 * urgencia, "MEDIA: RIESGO DESCENSO"
+                else: return 0.85, "BAJA: MITAD DE TABLA"
+            return 1.0, "Estándar: Fase Regular"
+
+        elif league_id in ligas_playoffs:
+            zona_corte = 8 if total_teams >= 12 else 4
+            if restantes <= 8:
+                if pos <= 2: return 1.08 * urgencia, "ALTA: VENTAJA PLAYOFFS"
+                elif pos == zona_corte or pos == zona_corte + 1: return 1.25 * urgencia, "CRÍTICO: PASE LIGUILLA"
+                elif pos < zona_corte: return 1.05 * urgencia, "MEDIA: DENTRO LIGUILLA"
+                elif pos >= total_teams - 1: return 1.20 * urgencia, "CRÍTICO: DESCENSO"
+                else: return 0.85, "BAJA: ELIMINADO"
+            return 1.0, "Estándar: Fase Regular"
+
+        else:
+            if restantes <= 6:
+                if pos <= 3: return 1.15 * urgencia, "CRÍTICO: TÍTULO"
+                if pos >= total_teams - 3: return 1.20 * urgencia, "CRÍTICO: DESCENSO"
+                if 4 <= pos <= 7: return 1.10 * urgencia, "ALTA: COPAS"
+                if 8 <= pos <= total_teams - 4: return 0.85, "BAJA: SIN OBJETIVOS"
+            return 1.0, "Estándar"
+
+    except Exception: 
         return 1.0, "Estándar"
-    except: return 1.0, "Estándar"
 
 def api_request_live(action, params=None):
     if params is None: params = {}
@@ -141,26 +182,24 @@ def get_advanced_metrics(team_id, league_id, position, pxg_val):
     finished = [e for e in events if e['match_status'] == 'Finished']
     if not finished: return 1.0, 1.0, 1.0, 1.0
     momentum_gf, total_w, goles_reales = 0, 0, 0
-    
+
     for m in finished[-5:]:
         try:
             m_date = datetime.strptime(m['match_date'], '%Y-%m-%d').replace(tzinfo=tz_sv)
             days_diff = (ahora_sv - m_date).days
-            
-            # Decaimiento híbrido (Lineal vs Exponencial)
+
             decay_exp = math.exp(-0.04 * days_diff)
             decay_lin = max(0.1, 1 - (days_diff / 60))
             weight = (decay_exp * 0.6) + (decay_lin * 0.4) 
-            
+
             is_home = m['match_hometeam_id'] == team_id
             gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
             gc = int(m['match_awayteam_score']) if is_home else int(m['match_hometeam_score'])
-            
-            # Ajuste por calidad de rival
+
             calidad_rival_adj = 1.0
             if not is_home and gc == 0: calidad_rival_adj = 1.15
             elif is_home and gc > 2: calidad_rival_adj = 0.90
-            
+
             momentum_gf += (gf * weight * calidad_rival_adj)
             goles_reales += gf
             total_w += weight
@@ -379,8 +418,8 @@ with st.sidebar:
                         nombres = [t['team_name'] for t in standings]; m, s = process.extractOne(n, nombres); return next((t for t in standings if t['team_name'] == m), None) if s > 65 else None
                     dl, dv = buscar(match_info['match_hometeam_name']), buscar(match_info['match_awayteam_name'])
                     if dl and dv:
-                        sl, tl = analyze_competition_stakes(standings, dl['team_id'])
-                        sv, tv = analyze_competition_stakes(standings, dv['team_id'])
+                        sl, tl = analyze_competition_stakes(standings, dl['team_id'], ligas_api[nombre_liga])
+                        sv, tv = analyze_competition_stakes(standings, dv['team_id'], ligas_api[nombre_liga])
                         st.session_state['stake_l'], st.session_state['tag_l'] = sl, tl
                         st.session_state['stake_v'], st.session_state['tag_v'] = sv, tv
 
@@ -417,6 +456,14 @@ with st.sidebar:
 # =================================================================
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V6.9.1 QUANTUM + PULSE MODE</p>", unsafe_allow_html=True)
+
+# ---> NUEVO INDICADOR DE IMPORTANCIA GLOBAL <---
+importancia_global = max(st.session_state['stake_l'], st.session_state['stake_v'])
+color_imp = "#00ffa3" if importancia_global < 1.1 else ("#d4af37" if importancia_global < 1.2 else "#ff4b4b")
+txt_imp = "Fase Regular / Normal" if importancia_global < 1.1 else ("Alta Importancia / Tensión" if importancia_global < 1.2 else "CRÍTICO / A MUERTE")
+
+st.markdown(f"<div style='text-align: center; margin-top: -20px; margin-bottom: 30px;'><span style='background: rgba(255,255,255,0.05); padding: 8px 15px; border-radius: 20px; border: 1px solid {color_imp}; color: {color_imp}; font-weight: 900; font-size: 0.9em; letter-spacing: 1px;'>🔥 CONTEXTO DEL PARTIDO: {txt_imp}</span></div>", unsafe_allow_html=True)
+# -----------------------------------------------
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -463,7 +510,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     xg_v = (ataque_v/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v'] * luck_v * (1/diff_motivation) * conv_v * tempo_v
 
     tj_final = ( (ltj + vtj) * 0.4 + (ref_avg * 0.6) ) if ref_avg > 0 else (ltj + vtj)
-    
+
     if 0.8 < diff_motivation < 1.2 and stake_l > 1.0: 
         tj_final *= 1.25 
     elif stake_l > 1.1 or stake_v > 1.1: 
@@ -475,7 +522,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     pool = [{"t": "1X", "p": res['DC'][0]}, {"t": "X2", "p": res['DC'][1]}, {"t": "12", "p": res['DC'][2]}, {"t": "BTTS: SÍ", "p": res['BTTS'][0]}]
     for line, p in res['GOLES'].items():
         if 0.5 <= line <= 3.5: pool.append({"t": f"Over {line}", "p": p[0]})
-    
+
     mb = st.session_state['market_bias']
     for p_item in pool:
         p_item['value'] = False
@@ -485,7 +532,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             elif p_item['t'] == "X2": implied_prob = (mb[1] + mb[2]) * 100
             elif p_item['t'] == "12": implied_prob = (mb[0] + mb[2]) * 100
             if implied_prob > 0 and p_item['p'] > (implied_prob * 1.08): p_item['value'] = True
-            
+
     sug = sorted([s for s in pool if 72 < s['p'] < 98], key=lambda x: x['p'], reverse=True)[:6]
 
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
@@ -495,7 +542,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         for s in sug: 
             val_tag = "<span class='value-bet-tag'>💰 VALUE BET</span>" if s.get('value', False) else ""
             st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 88 else ""}"><span><b>{s["p"]:.1f}%</b> — {s["t"]}</span>{val_tag}</div>', unsafe_allow_html=True)
-        
+
         msg_wa = f"💎 *OR936 ELITE v6.9.1 - PREDICCIÓN* 💎\n\n"
         msg_wa += f"📍 *{nl_manual} vs {nv_manual}*\n"
         msg_wa += f"🎯 Confianza Sistema: {res['BRIER']*100:.1f}%\n\n"
@@ -505,7 +552,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             msg_wa += f"• {s['t']}: {s['p']:.1f}%{val_str}\n"
         msg_wa += f"\n⚽ *MARCADOR PROBABLE:* {res['TOP'][0][0]} ({res['TOP'][0][1]:.1f}%)\n"
         msg_wa += "\n_Generado por Quantum Engine Pro_"
-        
+
         wa_url = f"https://wa.me/?text={urllib.parse.quote(msg_wa)}"
         st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">📲 COMPARTIR PICKS POR WHATSAPP</a>', unsafe_allow_html=True)
 
@@ -620,13 +667,13 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             for card in audit_cards:
                 st.markdown(f"<div class='audit-card'><div style='border-bottom: 1px solid #222; padding-bottom:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;'><span style='color:#555; font-size:0.75em; font-family:JetBrains Mono;'>{card['date']}</span><div style='font-weight:900; font-size:1.1em;'>{card['h']} <span style='color:var(--primary);'>{card['hs']} - {card['vs']}</span> {card['v']}</div><span class='mini-badge'>Finalizado</span></div>{card['picks_html']}</div>", unsafe_allow_html=True)
         else: st.warning("Sincroniza una liga para activar el backtesting.")
-        
+
     with t8:
         st.markdown("<h3 style='color:#fff; text-align:center; font-weight:900;'>COMPARATIVA TÁCTICA MULTIDIMENSIONAL</h3>", unsafe_allow_html=True)
         categories = ['Ataque (Poder de Fuego)', 'Solidez Defensiva (Inversa GC)', 'Tempo / Posesión', 'Conversión (Eficacia)', 'Motivación (Stake)']
-        
+
         def norm_val(val, base=1.0): return min(5, max(1, val / base * 2.5))
-        
+
         val_l = [
             norm_val(ataque_l, p_liga/2), 
             norm_val(p_liga/2, vgc+0.1),
@@ -641,7 +688,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             norm_val(conv_v), 
             norm_val(stake_v, 1.0) * 2.5
         ]
-        
+
         fig_radar = go.Figure()
         fig_radar.add_trace(go.Scatterpolar(r=val_l + [val_l[0]], theta=categories + [categories[0]], fill='toself', name=nl_manual, line_color='#00ffa3', fillcolor='rgba(0, 255, 163, 0.2)'))
         fig_radar.add_trace(go.Scatterpolar(r=val_v + [val_v[0]], theta=categories + [categories[0]], fill='toself', name=nv_manual, line_color='#d4af37', fillcolor='rgba(212, 175, 55, 0.2)'))

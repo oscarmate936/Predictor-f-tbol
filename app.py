@@ -327,61 +327,85 @@ class MotorMatematico:
         }
 
 # =================================================================
-# 4. DISEÑO UI/UX (ESTILO DORADO PRESERVADO)
+# 4. DISEÑO UI/UX (ESTILO DORADO PRESERVADO + ACTUALIZACIÓN PREMIUM)
 # =================================================================
 st.set_page_config(page_title="OR936 QUANTUM ELITE v6.9.1", layout="wide")
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Outfit:wght@300;400;600;900&display=swap');
-    :root { --primary: #d4af37; --secondary: #00ffa3; --bg: #05070a; }
+    :root { --primary: #d4af37; --secondary: #00ffa3; --bg: #05070a; --panel-bg: rgba(15, 20, 25, 0.7); }
     html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
     .stApp { background: var(--bg); color: #e0e0e0; }
+    
+    /* Contenedores Principales */
     .master-card { background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(10,12,18,0.9)); padding: 35px; border-radius: 24px; border: 1px solid rgba(212, 175, 55, 0.15); box-shadow: 0 20px 40px rgba(0,0,0,0.6); margin-bottom: 30px; }
-    .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; font-size: 1.05em; display:flex; justify-content:space-between; align-items:center; }
+    .premium-card { background: var(--panel-bg); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 25px; margin-bottom: 25px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); backdrop-filter: blur(10px); }
+    .tab-header { border-bottom: 1px solid rgba(212, 175, 55, 0.2); padding-bottom: 12px; margin-bottom: 20px; color: var(--primary); font-weight: 800; font-size: 1.1em; text-transform: uppercase; letter-spacing: 2px; display:flex; align-items:center; gap: 8px; }
+    
+    /* Elementos de Veredicto */
+    .verdict-item { background: rgba(0, 255, 163, 0.03); border-left: 4px solid var(--secondary); padding: 15px 20px; margin-bottom: 12px; border-radius: 8px 18px 18px 8px; font-size: 1.05em; display:flex; justify-content:space-between; align-items:center; transition: all 0.3s ease; }
+    .verdict-item:hover { transform: translateX(5px); background: rgba(0, 255, 163, 0.08); }
     .elite-alert { background: linear-gradient(90deg, rgba(212,175,55,0.15), rgba(0,255,163,0.05)); border: 1px solid var(--primary); }
-    .value-bet-tag { background: #d4af37; color: #000; font-size: 0.7em; font-weight: 900; padding: 2px 8px; border-radius: 4px; margin-left: 10px; }
-    .score-badge { background: #000; padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; }
-    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; }
+    .value-bet-tag { background: #d4af37; color: #000; font-size: 0.7em; font-weight: 900; padding: 3px 10px; border-radius: 6px; margin-left: 10px; box-shadow: 0 0 10px rgba(212,175,55,0.4); }
+    .score-badge { background: linear-gradient(145deg, #111, #0a0a0a); padding: 15px; border-radius: 16px; border: 1px solid rgba(212, 175, 55, 0.4); margin-bottom: 10px; text-align: center; color: var(--primary); font-weight: 800; font-size: 1.3em; font-family: 'JetBrains Mono', monospace; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+    
+    /* Botones y UI */
+    .stButton>button { background: linear-gradient(135deg, #d4af37 0%, #8a6d1d 100%); color: #000 !important; font-weight: 900; border: none; padding: 20px; border-radius: 14px; text-transform: uppercase; letter-spacing: 3px; transition: 0.4s; width: 100%; box-shadow: 0 10px 20px rgba(212,175,55,0.2); }
+    .stButton>button:hover { transform: translateY(-3px); box-shadow: 0 15px 25px rgba(212,175,55,0.4); }
+    
+    /* Monte Carlo y Auditoría */
     .mc-container { background: #080a0e; border: 1px solid #1a1e26; border-radius: 20px; padding: 30px; }
-    .mc-stat-box { background: linear-gradient(180deg, #11151c 0%, #0a0c10 100%); border: 1px solid #222; padding: 20px; border-radius: 16px; text-align: center; }
-    .mc-val { font-size: 1.8em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; display: block; }
-    .mc-lab { font-size: 0.75em; color: #666; text-transform: uppercase; letter-spacing: 2px; }
+    .mc-stat-box { background: linear-gradient(180deg, rgba(20,25,30,0.8) 0%, rgba(10,12,15,0.8) 100%); border: 1px solid rgba(255,255,255,0.05); padding: 25px 20px; border-radius: 16px; text-align: center; transition: 0.3s; }
+    .mc-stat-box:hover { border-color: rgba(212,175,55,0.4); transform: translateY(-5px); }
+    .mc-val { font-size: 2em; font-weight: 900; color: #d4af37; font-family: 'JetBrains Mono'; display: block; text-shadow: 0 0 15px rgba(212,175,55,0.2); }
+    .mc-lab { font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
+    .audit-card { background: rgba(15,20,25,0.8); border: 1px solid rgba(255,255,255,0.05); padding: 25px; border-radius: 16px; margin-bottom: 20px; transition: 0.3s; }
+    .audit-card:hover { border-color: rgba(0,255,163,0.3); }
+    
+    /* Etiquetas Menores */
     .ref-box { background: linear-gradient(90deg, rgba(212, 175, 55, 0.08), rgba(0,0,0,0)); border-left: 4px solid var(--primary); padding: 20px; border-radius: 0 15px 15px 0; margin-bottom: 25px; border: 1px solid rgba(212,175,55,0.1); }
-    .audit-card { background: #0a0c10; border: 1px solid #1a1e26; padding: 20px; border-radius: 12px; margin-bottom: 15px; }
-    .hit { color: var(--secondary); font-weight: 900; }
-    .miss { color: #ff4b4b; font-weight: 900; }
-    .mini-badge { background: #111; padding: 4px 8px; border-radius: 5px; font-size: 0.75em; font-family: 'JetBrains Mono'; color: #888; border: 1px solid #222; }
+    .hit { color: var(--secondary); font-weight: 900; background: rgba(0,255,163,0.1); padding: 2px 8px; border-radius: 4px; }
+    .miss { color: #ff4b4b; font-weight: 900; background: rgba(255,75,75,0.1); padding: 2px 8px; border-radius: 4px; }
+    .mini-badge { background: #111; padding: 4px 8px; border-radius: 5px; font-size: 0.75em; font-family: 'JetBrains Mono'; color: #888; border: 1px solid #333; }
     .motivation-tag { background: rgba(212, 175, 55, 0.1); color: var(--primary); padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: 700; border: 1px solid var(--primary); }
     .wa-btn { background: #25D366; color: white !important; text-decoration: none; padding: 12px 25px; border-radius: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; transition: 0.3s; margin-top: 15px; border: none; width: 100%; justify-content: center; }
     .wa-btn:hover { background: #128C7E; transform: translateY(-2px); }
+    
+    /* Overrides de Streamlit Tabs para hacerlos más elegantes */
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] { background-color: rgba(20,25,30,0.5); border-radius: 8px 8px 0 0; padding: 10px 20px; border: 1px solid rgba(255,255,255,0.05); border-bottom: none; }
+    .stTabs [aria-selected="true"] { background-color: rgba(212,175,55,0.1) !important; color: var(--primary) !important; border-top: 2px solid var(--primary) !important; }
     </style>
     """, unsafe_allow_html=True)
 
 def triple_bar(p1, px_val, p2, n1, nx, n2):
     st.markdown(f"""
-        <div style="margin: 30px 0; background: #0a0c10; padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #aaa; text-transform: uppercase; margin-bottom: 15px;">
-                <span style="color:var(--secondary)">{n1}: <b>{p1:.1f}%</b></span>
-                <span>{nx}: <b>{px_val:.1f}%</b></span>
-                <span style="color:var(--primary)">{n2}: <b>{p2:.1f}%</b></span>
+        <div style="margin: 30px 0; background: rgba(15,20,25,0.8); padding: 30px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; font-size: 0.95em; color: #bbb; text-transform: uppercase; margin-bottom: 20px; font-weight: 600; letter-spacing: 1px;">
+                <span style="color:var(--secondary)">{n1}: <b style="font-family:'JetBrains Mono'; font-size:1.2em;">{p1:.1f}%</b></span>
+                <span>{nx}: <b style="font-family:'JetBrains Mono'; font-size:1.2em;">{px_val:.1f}%</b></span>
+                <span style="color:var(--primary)">{n2}: <b style="font-family:'JetBrains Mono'; font-size:1.2em;">{p2:.1f}%</b></span>
             </div>
-            <div style="display: flex; height: 16px; border-radius: 50px; overflow: hidden; background: #1a1a1a;">
-                <div style="width: {p1}%; background: var(--secondary); box-shadow: 0 0 15px var(--secondary);"></div>
-                <div style="width: {px_val}%; background: #444;"></div>
-                <div style="width: {p2}%; background: var(--primary); box-shadow: 0 0 15px var(--primary);"></div>
+            <div style="display: flex; height: 18px; border-radius: 50px; overflow: hidden; background: #0a0c10; box-shadow: inset 0 2px 5px rgba(0,0,0,0.8);">
+                <div style="width: {p1}%; background: linear-gradient(90deg, #00b372, var(--secondary)); box-shadow: 0 0 20px var(--secondary);"></div>
+                <div style="width: {px_val}%; background: #333;"></div>
+                <div style="width: {p2}%; background: linear-gradient(90deg, #8a6d1d, var(--primary)); box-shadow: 0 0 20px var(--primary);"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
+# ---> NUEVA FUNCIÓN VISUAL PARA BARRAS DUALES MÁS PREMIUM <---
 def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffa3"):
     st.markdown(f"""
-        <div style="margin-bottom: 22px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.85em; color: #eee; margin-bottom: 8px;">
-                <span style="font-weight: 600;">{label_over} <span style="color:{color};">{prob_over:.1f}%</span></span>
-                <span style="color: #666;">{prob_under:.1f}% {label_under}</span>
+        <div style="background: rgba(10,12,15,0.6); padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 14px; transition: 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-weight: 700; color: #fff; font-size: 0.95em;">{label_over} 
+                    <span style="color:{color}; font-family: 'JetBrains Mono'; font-size: 1.1em; margin-left: 8px; text-shadow: 0 0 8px {color}66;">{prob_over:.1f}%</span>
+                </span>
+                <span style="color: #777; font-family: 'JetBrains Mono'; font-size: 0.9em;">{prob_under:.1f}% <span style="font-weight: 400; font-family: 'Outfit'; margin-left:4px;">{label_under}</span></span>
             </div>
-            <div style="display: flex; background: #111; height: 10px; border-radius: 5px; overflow: hidden;">
-                <div style="width: {prob_over}%; background: {color};"></div>
+            <div style="display: flex; background: #05070a; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.02);">
+                <div style="width: {prob_over}%; background: linear-gradient(90deg, {color}44, {color}); border-radius: 5px; box-shadow: 0 0 10px {color}44;"></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -464,7 +488,7 @@ txt_imp = "Fase Regular / Normal" if importancia_global < 1.1 else ("Alta Import
 
 st.markdown(f"""
     <div style='text-align: center; margin-top: -20px; margin-bottom: 30px;'>
-        <div style='display: inline-block; background: rgba(255,255,255,0.03); padding: 12px 30px; border-radius: 16px; border: 1px solid {color_imp};'>
+        <div style='display: inline-block; background: rgba(255,255,255,0.03); padding: 12px 30px; border-radius: 16px; border: 1px solid {color_imp}; box-shadow: 0 0 20px {color_imp}22;'>
             <div style='color: #888; font-size: 0.8em; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;'>🔥 Contexto del Partido</div>
             <div style='color: {color_imp}; font-weight: 900; font-size: 1.15em; letter-spacing: 1px;'>{txt_imp}</div>
         </div>
@@ -545,10 +569,10 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     st.markdown('<div class="master-card">', unsafe_allow_html=True)
     v1, v2 = st.columns([1.5, 1])
     with v1:
-        st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='color:var(--primary); font-weight: 800; letter-spacing: 1px;'>💎 TOP SELECCIONES <span style='font-size: 0.6em; color: #888; margin-left: 10px;'>Confianza: {res['BRIER']*100:.1f}%</span></h4>", unsafe_allow_html=True)
         for s in sug: 
             val_tag = "<span class='value-bet-tag'>💰 VALUE BET</span>" if s.get('value', False) else ""
-            st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 88 else ""}"><span><b>{s["p"]:.1f}%</b> — {s["t"]}</span>{val_tag}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 88 else ""}"><span><b style="font-family:\'JetBrains Mono\'; font-size:1.1em;">{s["p"]:.1f}%</b> &nbsp;—&nbsp; {s["t"]}</span>{val_tag}</div>', unsafe_allow_html=True)
 
         msg_wa = f"💎 *OR936 ELITE v6.9.1 - PREDICCIÓN* 💎\n\n"
         msg_wa += f"📍 *{nl_manual} vs {nv_manual}*\n"
@@ -564,8 +588,8 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">📲 COMPARTIR PICKS POR WHATSAPP</a>', unsafe_allow_html=True)
 
     with v2:
-        st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
-        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#fff; text-align:center; font-weight: 800; letter-spacing: 1px;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
+        for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <br><span style="font-size:0.55em; color:#888; font-family:\'Outfit\'; font-weight:600; text-transform:uppercase;">Probabilidad: {prob:.1f}%</span></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
@@ -573,67 +597,104 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🎲 MONTE CARLO PRO", "🧩 MATRIZ", "📈 AUDITORÍA", "🕸️ RADAR TÁCTICO"])
 
     with t1:
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>📊 LÍNEAS DE GOL PRINCIPALES (OVER / UNDER)</div>", unsafe_allow_html=True)
         ga, gb = st.columns(2)
         with ga:
-            for l in [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
-        with gb: dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
+            for l in [0.5, 1.5, 2.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
+        with gb:
+            for l in [3.5, 4.5, 5.5]: dual_bar_explicit(f"OVER {l}", res['GOLES'][l][0], f"UNDER {l}", res['GOLES'][l][1])
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>⚽ MERCADO BTTS (AMBOS EQUIPOS ANOTAN)</div>", unsafe_allow_html=True)
+        dual_bar_explicit("AMBOS ANOTAN: SÍ", res['BTTS'][0], "AMBOS ANOTAN: NO", res['BTTS'][1], color="#d4af37")
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with t2:
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>⚖️ ASIAN HANDICAP SPREADS</div>", unsafe_allow_html=True)
         ha, hb = st.columns(2)
         with ha:
-            st.markdown(f"<h5 style='color:var(--secondary);'>{nl_manual}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; padding: 12px; background: rgba(0, 255, 163, 0.1); border-radius: 10px; margin-bottom: 20px; color: var(--secondary); font-weight: 800; border: 1px solid rgba(0, 255, 163, 0.2);'>🛡️ LÍNEAS {nl_manual.upper()}</div>", unsafe_allow_html=True)
             for h, p in res['HANDICAPS']['L'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#00ffa3")
         with hb:
-            st.markdown(f"<h5 style='color:var(--primary);'>{nv_manual}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; padding: 12px; background: rgba(212, 175, 55, 0.1); border-radius: 10px; margin-bottom: 20px; color: var(--primary); font-weight: 800; border: 1px solid rgba(212, 175, 55, 0.2);'>⚔️ LÍNEAS {nv_manual.upper()}</div>", unsafe_allow_html=True)
             for h, p in res['HANDICAPS']['V'].items(): dual_bar_explicit(f"Handicap {h:+}", p, "", 100-p, color="#d4af37")
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with t3:
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>🛡️ MERCADOS DE DOBLE OPORTUNIDAD (DOUBLE CHANCE)</div>", unsafe_allow_html=True)
         dual_bar_explicit(f"1X ({nl_manual} o Empate)", res['DC'][0], "2 Directo", 100-res['DC'][0], color="#00ffa3")
         dual_bar_explicit(f"X2 ({nv_manual} o Empate)", res['DC'][1], "1 Directo", 100-res['DC'][1], color="#d4af37")
         dual_bar_explicit(f"12 (Cualquiera Gana)", res['DC'][2], "Empate", 100-res['DC'][2], color="#ffffff")
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with t4:
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>🎯 MERCADOS ESPECIALES (PROPS)</div>", unsafe_allow_html=True)
         ta, co = st.columns(2)
         with ta:
-            st.markdown(f"<h5 style='color:#ff4b4b; text-align:center;'>TARJETAS</h5>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='color:#ff4b4b; text-align:center; font-weight:800; padding:10px; background:rgba(255,75,75,0.1); border-radius:8px;'>🟨 TARJETAS ESTIMADAS</h5>", unsafe_allow_html=True)
             for l, p in res['TARJETAS'].items(): dual_bar_explicit(f"Tarjetas > {l}", p[0], f"< {l}", p[1], color="#ff4b4b")
         with co:
-            st.markdown("<h5 style='color:#00ffa3; text-align:center;'>CORNERS</h5>", unsafe_allow_html=True)
+            st.markdown("<h5 style='color:#00ffa3; text-align:center; font-weight:800; padding:10px; background:rgba(0,255,163,0.1); border-radius:8px;'>🚩 TIROS DE ESQUINA</h5>", unsafe_allow_html=True)
             for l, p in res['CORNERS'].items(): dual_bar_explicit(f"Corners > {l}", p[0], f"< {l}", p[1], color="#00ffa3")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with t5:
         mc = res['MONTECARLO']
-        st.markdown("<div class='mc-container'>", unsafe_allow_html=True)
-        st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900;'>QUANTUM SIMULATION DASHBOARD</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='premium-card mc-container' style='padding: 35px;'>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:#fff; text-align:center; font-weight:900; letter-spacing: 2px; margin-bottom: 30px;'>⚙️ QUANTUM SIMULATION DASHBOARD</h3>", unsafe_allow_html=True)
         c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN LOCAL</span><span class='mc-val'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>DRAW</span><span class='mc-val'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN AWAY</span><span class='mc-val'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
-        c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
+        c1.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN LOCAL</span><span class='mc-val' style='color:#00ffa3;'>{mc['L']:.1f}%</span></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>DRAW</span><span class='mc-val' style='color:#fff;'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN AWAY</span><span class='mc-val' style='color:#d4af37;'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
+        c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val' style='color:#ff4b4b;'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
+        
         counts_h = np.bincount(mc['SIM_H']); mode_h = np.argmax(counts_h); prob_h = (counts_h[mode_h]/100)
         counts_v = np.bincount(mc['SIM_V']); mode_v = np.argmax(counts_v); prob_v = (counts_v[mode_v]/100)
         scores_sim = [f"{h}-{v}" for h, v in zip(mc['SIM_H'], mc['SIM_V'])]
         mode_score = Counter(scores_sim).most_common(1)[0]
-        st.markdown("<hr style='border: 0.5px solid #222; margin: 30px 0;'>", unsafe_allow_html=True)
+        
+        st.markdown("<hr style='border: 0px; height: 1px; background: linear-gradient(90deg, transparent, rgba(212,175,55,0.5), transparent); margin: 35px 0;'>", unsafe_allow_html=True)
+        
         col_info_l, col_info_v = st.columns(2)
         with col_info_l:
-            st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nl_manual}</h5>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--secondary);'><span style='color:#666; font-size:0.75em;'>CONVERSIÓN REAL</span><br><span style='font-size:1.4em; font-weight:900;'>{conv_l:.2f}x</span> <span style='color:var(--secondary); font-size:0.9em;'>Eficiencia</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid rgba(0,255,163,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nl_manual.upper()}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--secondary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_l:.2f}x</span> <span style='color:var(--secondary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_l*80), "Normal", 100, color="#00ffa3")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_l:.2f}</span><span>Stake: {st.session_state['stake_l']:.2f}</span><span>ELO: {st.session_state['elo_bias'][0]:.2f}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_l:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_l']:.2f}</b></span><span>ELO: <b style='color:#fff;'>{st.session_state['elo_bias'][0]:.2f}</b></span></div>", unsafe_allow_html=True)
+        
         with col_info_v:
-            st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid #222; padding-bottom:10px;'>INTELLIGENCE: {nv_manual}</h5>", unsafe_allow_html=True)
-            st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:15px; border-radius:10px; margin-bottom:15px; border-left:3px solid var(--primary);'><span style='color:#666; font-size:0.75em;'>CONVERSIÓN REAL</span><br><span style='font-size:1.4em; font-weight:900;'>{conv_v:.2f}x</span> <span style='color:var(--primary); font-size:0.9em;'>Eficiencia</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid rgba(212,175,55,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nv_manual.upper()}</h5>", unsafe_allow_html=True)
+            st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--primary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_v:.2f}x</span> <span style='color:var(--primary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_v*80), "Normal", 100, color="#d4af37")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#666; font-family:JetBrains Mono; font-size:0.8em;'><span>Luck: {luck_v:.2f}</span><span>Stake: {st.session_state['stake_v']:.2f}</span><span>ELO: {st.session_state['elo_bias'][1]:.2f}</span></div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='text-align:center; margin-top:30px; padding:20px; background:#000; border:1px solid #333; border-radius:15px;'><span style='color:#666; text-transform:uppercase; letter-spacing:2px; font-size:0.8em;'>Marcador Élite de Simulación</span><br><span style='color:var(--primary); font-size:2.5em; font-weight:900; font-family:JetBrains Mono;'>{mode_score[0]}</span><br><span style='color:#444; font-size:0.8em;'>Frecuencia: {mode_score[1]/100:.1f}% de las simulaciones</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_v:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_v']:.2f}</b></span><span>ELO: <b style='color:#fff;'>{st.session_state['elo_bias'][1]:.2f}</b></span></div>", unsafe_allow_html=True)
+        
+        st.markdown(f"<div style='text-align:center; margin-top:35px; padding:25px; background: linear-gradient(180deg, #111, #050505); border:1px solid rgba(212,175,55,0.3); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);'><span style='color:#888; text-transform:uppercase; letter-spacing:3px; font-size:0.85em; font-weight:700;'>Marcador Élite de Simulación (Moda)</span><br><span style='color:var(--primary); font-size:3.5em; font-weight:900; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(212,175,55,0.4);'>{mode_score[0]}</span><br><span style='color:#666; font-size:0.9em; font-weight:600;'>Frecuencia Consolidada: <span style='color:#fff;'>{mode_score[1]/100:.1f}%</span> de las iteraciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-        fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10k Sim)", color_discrete_sequence=['#d4af37'], text_auto=True)
-        fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee"); st.plotly_chart(fig_hist, use_container_width=True)
+        
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10,000 Simulaciones)", color_discrete_sequence=['#d4af37'], text_auto=True)
+        fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", title_font=dict(size=18, family="Outfit", color="#d4af37"), xaxis_title="Total de Goles", yaxis_title="Frecuencia")
+        st.plotly_chart(fig_hist, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with t6:
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='tab-header'>🧩 MATRIZ BIVARIADA DE POISSON (EXACT SCORE)</div>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #888; font-size: 0.9em; margin-bottom: 20px;'>Mapa de calor de probabilidades conjuntas ajustadas por el factor de dependencia de Dixon-Coles. Eje Y: Goles Local. Eje X: Goles Visita.</p>", unsafe_allow_html=True)
         df_matriz = pd.DataFrame(res['MATRIZ'], index=[f"{i}" for i in range(6)], columns=[f"{j}" for j in range(6)])
-        st.plotly_chart(px.imshow(df_matriz, color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f"), use_container_width=True)
+        fig_matriz = px.imshow(df_matriz, color_continuous_scale=['#05070a', '#00ffa3', '#d4af37'], text_auto=".1f", labels=dict(x="Visita", y="Local", color="Probabilidad %"))
+        fig_matriz.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
+        st.plotly_chart(fig_matriz, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with t7:
-        st.markdown("<h3 style='color:#fff; font-weight:900;'>CENTRO DE AUDITORÍA Y BACKTESTING</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='premium-card' style='padding: 35px;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#fff; font-weight:900; text-align:center; letter-spacing: 2px; margin-bottom: 30px;'>CENTRO DE AUDITORÍA Y BACKTESTING PRO</h3>", unsafe_allow_html=True)
         if st.session_state.get('audit_results'):
             matches = st.session_state['audit_results']; total_hits = 0; total_picks_count = 0
             standings = api_request_cached(ligas_api[nombre_liga])
@@ -667,16 +728,23 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
                 for s in sugerencias_audit:
                     hit = validate_pick(s['t'], h_s, v_s); total_picks_count += 1
                     if hit: total_hits += 1
-                    desglose_html += f"<div style='display:flex; justify-content:space-between; margin-top:5px; padding: 4px 8px; background: rgba(255,255,255,0.02); border-radius: 4px;'><span style='color:#ccc;'>{s['t']} <b style='color:#666; font-size:0.85em;'>({s['p']:.1f}%)</b></span> <span class='{'hit' if hit else 'miss'}' style='font-family:JetBrains Mono;'>{'✓ HIT' if hit else '✗ MISS'}</span></div>"
+                    desglose_html += f"<div style='display:flex; justify-content:space-between; margin-top:8px; padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.02); border-radius: 6px;'><span style='color:#ddd; font-weight:600;'>{s['t']} <b style='color:#777; font-family:JetBrains Mono; font-size:0.85em; margin-left:5px;'>({s['p']:.1f}%)</b></span> <span class='{'hit' if hit else 'miss'}' style='font-family:JetBrains Mono; font-size:0.9em; letter-spacing:1px;'>{'✓ HIT' if hit else '✗ MISS'}</span></div>"
                 audit_cards.append({"date": m['match_date'], "h": h_name, "v": v_name, "hs": h_s, "vs": v_s, "picks_html": desglose_html})
             acc = (total_hits/total_picks_count*100) if total_picks_count > 0 else 0
-            st.markdown(f"<div style='background: linear-gradient(135deg, #0a0c10, #161b22); padding: 30px; border-radius: 20px; border: 1px solid #d4af3733; text-align: center; margin-bottom: 30px;'><span style='color: #666; text-transform: uppercase; letter-spacing: 3px; font-size: 0.8em;'>Backtesting Accuracy</span><h1 style='color: {'#00ffa3' if acc > 70 else '#d4af37'}; font-size: 4em; margin: 10px 0;'>{acc:.1f}%</h1><div style='color: #888; font-family: JetBrains Mono;'>Picks Acertados: {total_hits} de {total_picks_count}</div></div>", unsafe_allow_html=True)
+            
+            st.markdown(f"<div style='background: linear-gradient(135deg, rgba(15,20,25,0.9), rgba(5,7,10,0.9)); padding: 40px; border-radius: 20px; border: 1px solid rgba(212,175,55,0.3); text-align: center; margin-bottom: 35px; box-shadow: 0 15px 35px rgba(0,0,0,0.6);'><span style='color: #888; text-transform: uppercase; letter-spacing: 4px; font-size: 0.85em; font-weight: 700;'>Backtesting Accuracy Global</span><h1 style='color: {'#00ffa3' if acc > 70 else '#d4af37'}; font-size: 4.5em; margin: 15px 0; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(0,255,163,0.3);'>{acc:.1f}%</h1><div style='color: #aaa; font-family: JetBrains Mono; font-size: 1.1em; background: rgba(0,0,0,0.4); display: inline-block; padding: 8px 20px; border-radius: 50px;'>Picks Acertados: <span style='color:#fff; font-weight:bold;'>{total_hits}</span> de <span style='color:#fff; font-weight:bold;'>{total_picks_count}</span></div></div>", unsafe_allow_html=True)
+            
             for card in audit_cards:
-                st.markdown(f"<div class='audit-card'><div style='border-bottom: 1px solid #222; padding-bottom:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;'><span style='color:#555; font-size:0.75em; font-family:JetBrains Mono;'>{card['date']}</span><div style='font-weight:900; font-size:1.1em;'>{card['h']} <span style='color:var(--primary);'>{card['hs']} - {card['vs']}</span> {card['v']}</div><span class='mini-badge'>Finalizado</span></div>{card['picks_html']}</div>", unsafe_allow_html=True)
-        else: st.warning("Sincroniza una liga para activar el backtesting.")
+                st.markdown(f"<div class='audit-card'><div style='border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;'><span style='color:#777; font-size:0.8em; font-family:JetBrains Mono;'>{card['date']}</span><div style='font-weight:900; font-size:1.2em; color:#fff;'>{card['h']} <span style='color:var(--primary); background:rgba(212,175,55,0.1); padding: 2px 10px; border-radius: 6px; margin: 0 10px;'>{card['hs']} - {card['vs']}</span> {card['v']}</div><span class='mini-badge'>Finalizado</span></div>{card['picks_html']}</div>", unsafe_allow_html=True)
+        else: 
+            st.info("Sincroniza una liga en el menú lateral para activar el motor de backtesting histórico.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with t8:
-        st.markdown("<h3 style='color:#fff; text-align:center; font-weight:900;'>COMPARATIVA TÁCTICA MULTIDIMENSIONAL</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='premium-card' style='padding: 35px;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#fff; text-align:center; font-weight:900; letter-spacing: 2px; margin-bottom: 10px;'>🕸️ COMPARATIVA TÁCTICA MULTIDIMENSIONAL</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; color:#888; margin-bottom:30px; font-size:0.9em;'>Análisis poligonal de factores ponderados: Poder ofensivo, solidez defensiva, ritmo de juego, capacidad de conversión y motivación por el stake del torneo.</p>", unsafe_allow_html=True)
+        
         categories = ['Ataque (Poder de Fuego)', 'Solidez Defensiva (Inversa GC)', 'Tempo / Posesión', 'Conversión (Eficacia)', 'Motivación (Stake)']
 
         def norm_val(val, base=1.0): return min(5, max(1, val / base * 2.5))
@@ -697,9 +765,22 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         ]
 
         fig_radar = go.Figure()
-        fig_radar.add_trace(go.Scatterpolar(r=val_l + [val_l[0]], theta=categories + [categories[0]], fill='toself', name=nl_manual, line_color='#00ffa3', fillcolor='rgba(0, 255, 163, 0.2)'))
-        fig_radar.add_trace(go.Scatterpolar(r=val_v + [val_v[0]], theta=categories + [categories[0]], fill='toself', name=nv_manual, line_color='#d4af37', fillcolor='rgba(212, 175, 55, 0.2)'))
-        fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False, range=[0, 5]), bgcolor='rgba(0,0,0,0)'), showlegend=True, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee")
+        fig_radar.add_trace(go.Scatterpolar(r=val_l + [val_l[0]], theta=categories + [categories[0]], fill='toself', name=nl_manual, line_color='#00ffa3', fillcolor='rgba(0, 255, 163, 0.25)'))
+        fig_radar.add_trace(go.Scatterpolar(r=val_v + [val_v[0]], theta=categories + [categories[0]], fill='toself', name=nv_manual, line_color='#d4af37', fillcolor='rgba(212, 175, 55, 0.25)'))
+        fig_radar.update_layout(
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 5], color="#444", gridcolor="#222"), 
+                angularaxis=dict(color="#aaa", gridcolor="#222"),
+                bgcolor='rgba(0,0,0,0)'
+            ), 
+            showlegend=True, 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            font_color="#eee",
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
         st.plotly_chart(fig_radar, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #333; font-size: 0.8em; margin-top: 50px;'>OR936 ELITE v6.9.1 | QUANTUM MONTE CARLO & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #444; font-size: 0.85em; font-family: \"JetBrains Mono\"; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;'>OR936 ELITE v6.9.1 | QUANTUM MONTE CARLO & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)

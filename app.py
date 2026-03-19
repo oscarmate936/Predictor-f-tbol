@@ -102,11 +102,11 @@ def get_team_tactical_stats(team_id, league_id):
         shots_off = max(0, shots_total - shots_on_goal)
         pxg_per_game = ((shots_on_goal * 0.33) + (shots_off * 0.10)) / match_played
         possession = int(data.get('possession', 50).replace('%',''))
-        
+
         # Factor de Tempo: Basado en volumen total de tiros (Media histórica ~12)
         tempo = shots_total / (match_played * 12)
         ia = (1 + (int(data.get('shots_blocked', 0)) / match_played / 5)) * (possession / 50)
-        
+
         return max(0.8, min(1.4, ia)), pxg_per_game, max(0.85, min(1.25, tempo))
     except: return 1.0, 1.0, 1.0
 
@@ -152,11 +152,11 @@ def get_advanced_metrics(team_id, league_id, position, pxg_val):
             gf = int(m['match_hometeam_score']) if is_home else int(m['match_awayteam_score'])
             momentum_gf += (gf * weight); goles_reales += gf; total_w += weight
         except: continue
-    
+
     # Factor de Conversión Real (Goles Reales vs Proyectados)
     expected_period = pxg_val * len(finished[-5:])
     conv_rate = (goles_reales / expected_period) if expected_period > 0 else 1.0
-    
+
     momentum_adj = (momentum_gf / total_w) if total_w > 0 else 1.0
     elo_strength = 1.15 if int(position) <= 4 else (1.05 if int(position) <= 8 else 0.95)
     luck_factor = 1.0
@@ -300,6 +300,8 @@ st.markdown("""
     .miss { color: #ff4b4b; font-weight: 900; }
     .mini-badge { background: #111; padding: 4px 8px; border-radius: 5px; font-size: 0.75em; font-family: 'JetBrains Mono'; color: #888; border: 1px solid #222; }
     .motivation-tag { background: rgba(212, 175, 55, 0.1); color: var(--primary); padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: 700; border: 1px solid var(--primary); }
+    .wa-btn { background: #25D366; color: white !important; text-decoration: none; padding: 12px 25px; border-radius: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; transition: 0.3s; margin-top: 15px; border: none; width: 100%; justify-content: center; }
+    .wa-btn:hover { background: #128C7E; transform: translateY(-2px); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -369,25 +371,25 @@ with st.sidebar:
                         sv, tv = analyze_competition_stakes(standings, dv['team_id'])
                         st.session_state['stake_l'], st.session_state['tag_l'] = sl, tl
                         st.session_state['stake_v'], st.session_state['tag_v'] = sv, tv
-                        
+
                         phl, pav = int(dl['home_league_payed']), int(dv['away_league_payed'])
                         cb_l, pxg_l, tempo_l = get_team_tactical_stats(dl['team_id'], ligas_api[nombre_liga])
                         cb_v, pxg_v, tempo_v = get_team_tactical_stats(dv['team_id'], ligas_api[nombre_liga])
-                        
+
                         st.session_state['tempo_factor'] = (tempo_l, tempo_v)
                         st.session_state['corner_bias'] = (cb_l, cb_v); st.session_state['proxy_xg_l'] = pxg_l; st.session_state['proxy_xg_v'] = pxg_v
                         st.session_state['h2h_bias'] = get_h2h_data(dl['team_id'], dv['team_id'])
-                        
+
                         # METRICAS AVANZADAS (NUEVO: CONVERSION FACTOR)
                         elo_l, mom_l, luck_l, conv_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'], pxg_l)
                         elo_v, mom_v, luck_v, conv_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'], pxg_v)
-                        
+
                         st.session_state['conv_factor'] = (conv_l, conv_v)
                         st.session_state['luck_factor'] = (luck_l, luck_v)
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
                         st.session_state['fatiga_v'] = get_fatigue_factor(dv['team_id'], match_info['match_date'])
                         st.session_state['market_bias'] = get_market_consensus(match_info['match_id'])
-                        
+
                         st.session_state['lgf_auto'] = (float(dl['home_league_GF'])/phl if phl>0 else 1.5) * 0.6 + (mom_l * 0.4)
                         st.session_state['lgc_auto'] = (float(dl['home_league_GA'])/phl if phl>0 else 1.0)
                         st.session_state['vgf_auto'] = (float(dv['away_league_GF'])/pav if pav>0 else 1.2) * 0.6 + (mom_v * 0.4)
@@ -395,7 +397,7 @@ with st.sidebar:
                         st.session_state['lco_auto'] = float(dl.get('home_league_corners', 5.5))
                         st.session_state['vco_auto'] = float(dv.get('away_league_corners', 4.8))
                         st.session_state['elo_bias'] = (elo_l, elo_v); st.session_state['nl_auto'], st.session_state['nv_auto'] = dl['team_name'], dv['team_name']
-                        
+
                         recent_league = api_request_live("get_events", {"from": (ahora_sv - timedelta(days=10)).strftime('%Y-%m-%d'), "to": ahora_sv.strftime('%Y-%m-%d'), "league_id": ligas_api[nombre_liga]})
                         st.session_state['audit_results'] = [e for e in recent_league if e['match_status'] == 'Finished'][-10:]; st.rerun()
 
@@ -435,20 +437,20 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     luck_l, luck_v = st.session_state['luck_factor']
     conv_l, conv_v = st.session_state['conv_factor']
     tempo_l, tempo_v = st.session_state['tempo_factor']
-    
+
     stake_l, stake_v = st.session_state['stake_l'], st.session_state['stake_v']
     diff_motivation = stake_l / stake_v
-    
+
     ataque_l = (lgf * 0.4) + (st.session_state['proxy_xg_l'] * 0.6)
     ataque_v = (vgf * 0.4) + (st.session_state['proxy_xg_v'] * 0.6)
-    
+
     # AJUSTE QUANTUM v6.9: xG * Motivación * Conversión * Tempo
     xg_l = (ataque_l/p_liga)*(vgc/p_liga)*p_liga * (hfa_base * hfa_l_spec) * st.session_state['h2h_bias'][0] * st.session_state['elo_bias'][0] * st.session_state['fatiga_l'] * luck_l * diff_motivation * conv_l * tempo_l
     xg_v = (ataque_v/p_liga)*(lgc/p_liga)*p_liga * (1/(hfa_base * (1/hfa_v_spec))) * st.session_state['h2h_bias'][1] * st.session_state['elo_bias'][1] * st.session_state['fatiga_v'] * luck_v * (1/diff_motivation) * conv_v * tempo_v
-    
+
     tj_final = ( (ltj + vtj) * 0.4 + (ref_avg * 0.6) ) if ref_avg > 0 else (ltj + vtj)
     if stake_l > 1.1 or stake_v > 1.1: tj_final *= 1.15
-    
+
     cb_l, cb_v = st.session_state['corner_bias']; co_final = (lco * cb_l) + (vco * cb_v)
     res = motor.procesar(xg_l, xg_v, tj_final, co_final)
 
@@ -463,6 +465,21 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     with v1:
         st.markdown(f"<h4 style='color:var(--primary);'>💎 TOP SELECCIONES (Confianza: {res['BRIER']*100:.1f}%)</h4>", unsafe_allow_html=True)
         for s in sug: st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 88 else ""}"><b>{s["p"]:.1f}%</b> — {s["t"]}</div>', unsafe_allow_html=True)
+        
+        # ==========================================
+        # NUEVO BOTÓN: COMPARTIR EN WHATSAPP
+        # ==========================================
+        msg_wa = f"💎 *OR936 ELITE v6.9 - PREDICCIÓN* 💎\n\n"
+        msg_wa += f"📍 *{nl_manual} vs {nv_manual}*\n"
+        msg_wa += f"🎯 Confianza Sistema: {res['BRIER']*100:.1f}%\n\n"
+        msg_wa += "✅ *TOP PICKS:*\n"
+        for s in sug[:3]: msg_wa += f"• {s['t']}: {s['p']:.1f}%\n"
+        msg_wa += f"\n⚽ *MARCADOR PROBABLE:* {res['TOP'][0][0]} ({res['TOP'][0][1]:.1f}%)\n"
+        msg_wa += "\n_Generado por Quantum Engine Pro_"
+        
+        wa_url = f"https://wa.me/?text={urllib.parse.quote(msg_wa)}"
+        st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">📲 COMPARTIR PICKS POR WHATSAPP</a>', unsafe_allow_html=True)
+
     with v2:
         st.markdown("<h4 style='color:#fff; text-align:center;'>🎯 MARCADOR PROBABLE</h4>", unsafe_allow_html=True)
         for score, prob in res['TOP']: st.markdown(f'<div class="score-badge">{score} <span style="font-size:0.6em; color:#666;">({prob:.1f}%)</span></div>', unsafe_allow_html=True)
@@ -471,7 +488,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     triple_bar(res['1X2'][0], res['1X2'][1], res['1X2'][2], nl_manual, "Empate", nv_manual)
 
     t1, t2, t3, t4, t5, t6, t7 = st.tabs(["🥅 GOLES", "🏆 HANDICAP", "📊 1X2", "🚩 ESPECIALES", "🎲 MONTE CARLO PRO", "🧩 MATRIZ", "📈 AUDITORÍA"])
-    
+
     with t1:
         ga, gb = st.columns(2)
         with ga:

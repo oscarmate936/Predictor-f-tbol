@@ -10,9 +10,10 @@ import urllib.parse
 from fuzzywuzzy import process
 import time
 from collections import Counter
+from scipy.optimize import minimize  # <--- NUEVO: Motor de optimización añadido
 
 # =================================================================
-# 1. CONFIGURACIÓN API & ESTADO (v6.9.1 - OVER/UNDER PRECISION)
+# 1. CONFIGURACIÓN API & ESTADO (v6.9.2 - QUANTUM MLE INTEGRATED)
 # =================================================================
 API_KEY = "d1d66e3f2bd12ea7496a1ab73069b2161f66b8c87656c5874eda75d1f8201655"
 BASE_URL = "https://apiv3.apifootball.com/"
@@ -41,6 +42,7 @@ if 'stake_l' not in st.session_state: st.session_state['stake_l'] = 1.0
 if 'stake_v' not in st.session_state: st.session_state['stake_v'] = 1.0
 if 'tag_l' not in st.session_state: st.session_state['tag_l'] = "Estándar"
 if 'tag_v' not in st.session_state: st.session_state['tag_v'] = "Estándar"
+if 'mle_rho' not in st.session_state: st.session_state['mle_rho'] = None # <--- NUEVO: Guardar Rho óptimo
 
 defaults = {
     'p_liga_auto': 2.5, 'hfa_league': 1.0, 'form_l': 1.0, 'form_v': 1.0,
@@ -51,7 +53,7 @@ for key, val in defaults.items():
     if key not in st.session_state: st.session_state[key] = val
 
 # =================================================================
-# 2. FUNCIONES DE LÓGICA ELITE (ACTUALIZADAS)
+# 2. FUNCIONES DE LÓGICA ELITE (ACTUALIZADAS CON MLE)
 # =================================================================
 
 def analyze_competition_stakes(standings, team_id, league_id):
@@ -129,6 +131,67 @@ def api_request_cached(league_id):
         data = res.json()
         return data if isinstance(data, list) else []
     except: return []
+
+# ---> NUEVAS FUNCIONES: MOTOR MLE DIXON-COLES <---
+def rho_correction(x, y, lam, mu, rho):
+    if x == 0 and y == 0: return 1 - (lam * mu * rho)
+    elif x == 0 and y == 1: return 1 + (lam * rho)
+    elif x == 1 and y == 0: return 1 + (mu * rho)
+    elif x == 1 and y == 1: return 1 - rho
+    return 1.0
+
+def dc_log_likelihood(params, df, teams):
+    n_teams = len(teams)
+    alphas = params[:n_teams]
+    betas = params[n_teams:2*n_teams]
+    rho = params[-2]
+    gamma = params[-1] 
+    
+    attack_dict = dict(zip(teams, alphas))
+    defense_dict = dict(zip(teams, betas))
+    
+    log_like = 0.0
+    for _, row in df.iterrows():
+        x = row['home_goals']; y = row['away_goals']
+        lam = attack_dict[row['home_team']] * defense_dict[row['away_team']] * gamma
+        mu = attack_dict[row['away_team']] * defense_dict[row['home_team']]
+        tau = rho_correction(x, y, lam, mu, rho)
+        if tau <= 0 or lam <= 0 or mu <= 0: return 1e6  
+        ll_match = math.log(tau) - lam + x * math.log(lam) - mu + y * math.log(mu) - math.lgamma(x + 1) - math.lgamma(y + 1)
+        log_like += ll_match
+    return -log_like 
+
+def train_dixon_coles(df):
+    teams = np.unique(df[['home_team', 'away_team']].values)
+    n_teams = len(teams)
+    init_params = np.concatenate((np.ones(n_teams), np.ones(n_teams), [0.0], [1.1]))
+    def constraint_func(params): return np.mean(params[:n_teams]) - 1.0
+    constraints = [{'type': 'eq', 'fun': constraint_func}]
+    bounds = [(0.01, 3.0)] * (2 * n_teams) + [(-0.2, 0.2), (0.5, 2.0)]
+    
+    res = minimize(dc_log_likelihood, init_params, args=(df, teams), method='SLSQP', bounds=bounds, constraints=constraints, options={'maxiter': 100})
+    model_params = {'attack': dict(zip(teams, res.x[:n_teams])), 'defense': dict(zip(teams, res.x[n_teams:2*n_teams])), 'rho': res.x[-2], 'gamma': res.x[-1]}
+    return model_params, res.success
+
+@st.cache_data(ttl=86400) 
+def extraer_historial_mle(league_id):
+    f_hasta = ahora_sv.strftime('%Y-%m-%d')
+    f_desde = (ahora_sv - timedelta(days=240)).strftime('%Y-%m-%d')
+    params = {"action": "get_events", "from": f_desde, "to": f_hasta, "league_id": league_id}
+    eventos_brutos = api_request_live("get_events", params)
+    datos_mle = []
+    for m in eventos_brutos:
+        if m.get('match_status') == 'Finished':
+            try:
+                datos_mle.append({
+                    'home_team': m['match_hometeam_name'],
+                    'away_team': m['match_awayteam_name'],
+                    'home_goals': int(m['match_hometeam_score']),
+                    'away_goals': int(m['match_awayteam_score'])
+                })
+            except: continue
+    return pd.DataFrame(datos_mle)
+# ---> FIN NUEVAS FUNCIONES MLE <---
 
 @st.cache_data(ttl=600)
 def get_team_tactical_stats(team_id, league_id):
@@ -242,10 +305,13 @@ def get_h2h_data(team_id_l, team_id_v):
 # =================================================================
 
 class MotorMatematico:
-    def __init__(self, league_avg=2.5, draw_freq=0.25): 
-        base_rho = -0.12 if league_avg > 2.6 else -0.16
-        if draw_freq > 0.30: base_rho -= 0.05
-        self.rho = base_rho
+    def __init__(self, league_avg=2.5, draw_freq=0.25, custom_rho=None): # <--- Modificado para aceptar rho de MLE
+        if custom_rho is not None:
+            self.rho = custom_rho
+        else:
+            base_rho = -0.12 if league_avg > 2.6 else -0.16
+            if draw_freq > 0.30: base_rho -= 0.05
+            self.rho = base_rho
 
     def poisson_prob(self, k, lam):
         if lam <= 0: return 1.0 if k == 0 else 0.0
@@ -394,7 +460,6 @@ def triple_bar(p1, px_val, p2, n1, nx, n2):
         </div>
     """, unsafe_allow_html=True)
 
-# ---> NUEVA FUNCIÓN VISUAL PARA BARRAS DUALES MÁS PREMIUM <---
 def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00ffa3"):
     st.markdown(f"""
         <div style="background: rgba(10,12,15,0.6); padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 14px; transition: 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
@@ -411,7 +476,7 @@ def dual_bar_explicit(label_over, prob_over, label_under, prob_under, color="#00
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 5. SIDEBAR (SYNC DE DATOS DE ALTA PRECISIÓN)
+# 5. SIDEBAR (SYNC DE DATOS DE ALTA PRECISIÓN Y MLE)
 # =================================================================
 with st.sidebar:
     st.markdown("<h2 style='color:#d4af37; text-align:center; font-weight:900;'>GOLD TERMINAL v6.9.1</h2>", unsafe_allow_html=True)
@@ -431,7 +496,7 @@ with st.sidebar:
         p_sel = st.selectbox("📍 Partidos Encontrados", list(op_p.keys()))
         if st.button("SYNC DATA"):
             st.cache_data.clear()
-            with st.spinner("QUANTUM DEEP SYNC..."):
+            with st.spinner("QUANTUM DEEP SYNC & MLE TRAINING..."):
                 standings = api_request_cached(ligas_api[nombre_liga]); match_info = op_p[p_sel]
                 if standings:
                     h_goals = sum(int(t['home_league_GF']) for t in standings); a_goals = sum(int(t['away_league_GF']) for t in standings)
@@ -458,6 +523,27 @@ with st.sidebar:
                         elo_l, mom_l, luck_l, conv_l = get_advanced_metrics(dl['team_id'], ligas_api[nombre_liga], dl['overall_league_position'], pxg_l)
                         elo_v, mom_v, luck_v, conv_v = get_advanced_metrics(dv['team_id'], ligas_api[nombre_liga], dv['overall_league_position'], pxg_v)
 
+                        # ---> NUEVA INTEGRACIÓN MLE <---
+                        df_historial = extraer_historial_mle(ligas_api[nombre_liga])
+                        if not df_historial.empty:
+                            params_mle, success = train_dixon_coles(df_historial)
+                            if success:
+                                st.session_state['mle_rho'] = params_mle['rho']
+                                alpha_l = params_mle['attack'].get(dl['team_name'], 1.0)
+                                beta_l = params_mle['defense'].get(dl['team_name'], 1.0)
+                                alpha_v = params_mle['attack'].get(dv['team_name'], 1.0)
+                                beta_v = params_mle['defense'].get(dv['team_name'], 1.0)
+                                
+                                # Reemplazamos sutilmente el ELO heurístico por el poder real calculado por Max Verosimilitud
+                                mle_elo_l = alpha_l / max(0.1, beta_l)
+                                mle_elo_v = alpha_v / max(0.1, beta_v)
+                                elo_l = max(0.75, min(1.4, mle_elo_l))
+                                elo_v = max(0.75, min(1.4, mle_elo_v))
+                                
+                                # Ajustamos la ventaja de localía matemáticamente pura
+                                st.session_state['hfa_specific'] = (params_mle['gamma'], 1/params_mle['gamma'] if params_mle['gamma']>0 else 0.9)
+                        # ---> FIN INTEGRACIÓN MLE <---
+
                         st.session_state['conv_factor'] = (conv_l, conv_v)
                         st.session_state['luck_factor'] = (luck_l, luck_v)
                         st.session_state['fatiga_l'] = get_fatigue_factor(dl['team_id'], match_info['match_date'])
@@ -481,7 +567,6 @@ with st.sidebar:
 st.markdown("<h1 style='text-align: center; color: #fff; font-weight: 900; margin-bottom: 0;'>OR936 <span style='color:#d4af37'>ELITE</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #555; letter-spacing: 5px; margin-bottom: 40px;'>PREDICTIVE ENGINE V6.9.1 QUANTUM + PULSE MODE</p>", unsafe_allow_html=True)
 
-# ---> NUEVO INDICADOR DE IMPORTANCIA GLOBAL <---
 importancia_global = max(st.session_state['stake_l'], st.session_state['stake_v'])
 color_imp = "#00ffa3" if importancia_global < 1.1 else ("#d4af37" if importancia_global < 1.2 else "#ff4b4b")
 txt_imp = "Fase Regular / Normal" if importancia_global < 1.1 else ("Alta Importancia / Tensión" if importancia_global < 1.2 else "CRÍTICO / A MUERTE")
@@ -494,7 +579,6 @@ st.markdown(f"""
         </div>
     </div>
 """, unsafe_allow_html=True)
-# -----------------------------------------------
 
 col_l, col_v = st.columns(2)
 with col_l:
@@ -525,7 +609,9 @@ ref_nom = rc1.text_input("Nombre del Árbitro", placeholder="Ej: Gil Manzano", l
 ref_avg = rc2.number_input("Promedio Tarjetas", 0.0, 15.0, value=0.0, step=0.1, help="Si es > 0, este valor tiene un peso del 60% sobre el total de tarjetas estimadas."); st.markdown('</div>', unsafe_allow_html=True)
 
 if st.button("GENERAR REPORTE DE INTELIGENCIA"):
-    motor = MotorMatematico(league_avg=p_liga, draw_freq=st.session_state['draw_freq'])
+    # ---> APLICAR MLE RHO AQUÍ <---
+    motor = MotorMatematico(league_avg=p_liga, draw_freq=st.session_state['draw_freq'], custom_rho=st.session_state.get('mle_rho'))
+    
     hfa_base = st.session_state['hfa_league']; hfa_l_spec, hfa_v_spec = st.session_state['hfa_specific']
     luck_l, luck_v = st.session_state['luck_factor']
     conv_l, conv_v = st.session_state['conv_factor']
@@ -665,13 +751,13 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid rgba(0,255,163,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nl_manual.upper()}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--secondary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_l:.2f}x</span> <span style='color:var(--secondary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_l*80), "Normal", 100, color="#00ffa3")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_l:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_l']:.2f}</b></span><span>ELO: <b style='color:#fff;'>{st.session_state['elo_bias'][0]:.2f}</b></span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_l:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_l']:.2f}</b></span><span>ELO MLE: <b style='color:#fff;'>{st.session_state['elo_bias'][0]:.2f}</b></span></div>", unsafe_allow_html=True)
         
         with col_info_v:
             st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid rgba(212,175,55,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nv_manual.upper()}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--primary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_v:.2f}x</span> <span style='color:var(--primary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_v*80), "Normal", 100, color="#d4af37")
-            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_v:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_v']:.2f}</b></span><span>ELO: <b style='color:#fff;'>{st.session_state['elo_bias'][1]:.2f}</b></span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_v:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_v']:.2f}</b></span><span>ELO MLE: <b style='color:#fff;'>{st.session_state['elo_bias'][1]:.2f}</b></span></div>", unsafe_allow_html=True)
         
         st.markdown(f"<div style='text-align:center; margin-top:35px; padding:25px; background: linear-gradient(180deg, #111, #050505); border:1px solid rgba(212,175,55,0.3); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);'><span style='color:#888; text-transform:uppercase; letter-spacing:3px; font-size:0.85em; font-weight:700;'>Marcador Élite de Simulación (Moda)</span><br><span style='color:var(--primary); font-size:3.5em; font-weight:900; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(212,175,55,0.4);'>{mode_score[0]}</span><br><span style='color:#666; font-size:0.9em; font-weight:600;'>Frecuencia Consolidada: <span style='color:#fff;'>{mode_score[1]/100:.1f}%</span> de las iteraciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -783,4 +869,4 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         st.plotly_chart(fig_radar, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #444; font-size: 0.85em; font-family: \"JetBrains Mono\"; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;'>OR936 ELITE v6.9.1 | QUANTUM MONTE CARLO & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #444; font-size: 0.85em; font-family: \"JetBrains Mono\"; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;'>OR936 ELITE v6.9.2 | QUANTUM MLE & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)

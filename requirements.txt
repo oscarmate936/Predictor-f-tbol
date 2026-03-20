@@ -5,5 +5,4 @@ plotly
 requests
 fuzzywuzzy
 python-Levenshtein
-beautifulsoup4
-google-generativeai
+scipy

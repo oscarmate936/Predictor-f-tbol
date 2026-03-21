@@ -57,7 +57,7 @@ for key, val in defaults.items():
 # =================================================================
 
 def analyze_competition_stakes(standings, team_id, league_id):
-    ligas_top = [152, 302, 207, 175, 168, 307, 322]
+    ligas_top = [152, 302, 207, 175, 168, 307, 322, 301] # Se añade 301 aquí
     ligas_playoffs = [601, 99, 100, 103]
     copas = [3, 4, 683, 13, 145, 146, 300, 209, 177, 169, 603]
 
@@ -483,6 +483,7 @@ with st.sidebar:
     ligas_api = {
         "Saudi Pro League": 307, "Trendyol Süper Lig": 322, "Liga Mayor (El Salvador)": 601, "Copa Presidente (El Salvador)": 603,
         "Premier League (Inglaterra)": 152, "La Liga (España)": 302, "Serie A (Italia)": 207, "Bundesliga (Alemania)": 175, "Ligue 1 (Francia)": 168, 
+        "Primeira Liga (Portugal)": 301, # <--- SE AÑADIO PORTUGAL
         "UEFA Champions League": 3, "UEFA Europa League": 4, "UEFA Conference League": 683, "Copa Libertadores": 13,
         "Brasileirão Betano (Série A)": 99, "Brasileirão Série B": 100, "Brasileirão Série C": 103, "Copa de Brasil": 101,
         "FA Cup (Inglaterra)": 145, "EFL Cup (Inglaterra)": 146, "Copa del Rey (España)": 300, "Coppa Italia (Italia)": 209, "DFB Pokal (Alemania)": 177, "Coupe de France (Francia)": 169
@@ -869,4 +870,4 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         st.plotly_chart(fig_radar, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #444; font-size: 0.85em; font-family: \"JetBrains Mono\"; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;'>OR936 ELITE v6.9.2 | QUANTUM MLE & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #444; font-size: 0.85em; font-family: \"JetBrains Mono\"; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;'>OR936 ELITE v6.9.2 | QUANTUM MLE & AUDIT SYSTEM PRO</p>", unsafe_allow_html=True)   

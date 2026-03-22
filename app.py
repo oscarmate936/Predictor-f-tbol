@@ -1,4 +1,4 @@
-import streamlit as st
+Import streamlit as st
 import math
 import pandas as pd
 import numpy as np
@@ -67,18 +67,18 @@ def analyze_competition_stakes(standings, team_id, league_id):
 
     if not standings or not isinstance(standings, list): 
         return 1.0, "Estándar: Sin Datos"
-        
+
     try:
         total_teams = len(standings)
         team_data = next((t for t in standings if t['team_id'] == team_id), None)
         if not team_data: return 1.0, "Estándar"
-        
+
         pos = int(team_data.get('overall_league_position', 10))
         pj = int(team_data.get('overall_league_payed', 0))
-        
+
         total_jornadas = (total_teams - 1) * 2
         restantes = total_jornadas - pj
-        
+
         urgencia = 1.0
         if restantes <= 3: urgencia = 1.20
         elif restantes <= 7: urgencia = 1.10
@@ -147,10 +147,10 @@ def dc_log_likelihood(params, df, teams):
     betas = params[n_teams:2*n_teams]
     rho = params[-2]
     gamma = params[-1] 
-    
+
     attack_dict = dict(zip(teams, alphas))
     defense_dict = dict(zip(teams, betas))
-    
+
     log_like = 0.0
     for _, row in df.iterrows():
         x = row['home_goals']; y = row['away_goals']
@@ -169,7 +169,7 @@ def train_dixon_coles(df):
     def constraint_func(params): return np.mean(params[:n_teams]) - 1.0
     constraints = [{'type': 'eq', 'fun': constraint_func}]
     bounds = [(0.01, 3.0)] * (2 * n_teams) + [(-0.2, 0.2), (0.5, 2.0)]
-    
+
     res = minimize(dc_log_likelihood, init_params, args=(df, teams), method='SLSQP', bounds=bounds, constraints=constraints, options={'maxiter': 100})
     model_params = {'attack': dict(zip(teams, res.x[:n_teams])), 'defense': dict(zip(teams, res.x[n_teams:2*n_teams])), 'rho': res.x[-2], 'gamma': res.x[-1]}
     return model_params, res.success
@@ -535,13 +535,13 @@ with st.sidebar:
                                 beta_l = params_mle['defense'].get(dl['team_name'], 1.0)
                                 alpha_v = params_mle['attack'].get(dv['team_name'], 1.0)
                                 beta_v = params_mle['defense'].get(dv['team_name'], 1.0)
-                                
+
                                 # Reemplazamos sutilmente el ELO heurístico por el poder real calculado por Max Verosimilitud
                                 mle_elo_l = alpha_l / max(0.1, beta_l)
                                 mle_elo_v = alpha_v / max(0.1, beta_v)
                                 elo_l = max(0.75, min(1.4, mle_elo_l))
                                 elo_v = max(0.75, min(1.4, mle_elo_v))
-                                
+
                                 # Ajustamos la ventaja de localía matemáticamente pura
                                 st.session_state['hfa_specific'] = (params_mle['gamma'], 1/params_mle['gamma'] if params_mle['gamma']>0 else 0.9)
                         # ---> FIN INTEGRACIÓN MLE <---
@@ -613,7 +613,7 @@ ref_avg = rc2.number_input("Promedio Tarjetas", 0.0, 15.0, value=0.0, step=0.1, 
 if st.button("GENERAR REPORTE DE INTELIGENCIA"):
     # ---> APLICAR MLE RHO AQUÍ <---
     motor = MotorMatematico(league_avg=p_liga, draw_freq=st.session_state['draw_freq'], custom_rho=st.session_state.get('mle_rho'))
-    
+
     hfa_base = st.session_state['hfa_league']; hfa_l_spec, hfa_v_spec = st.session_state['hfa_specific']
     luck_l, luck_v = st.session_state['luck_factor']
     conv_l, conv_v = st.session_state['conv_factor']
@@ -662,15 +662,46 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             val_tag = "<span class='value-bet-tag'>💰 VALUE BET</span>" if s.get('value', False) else ""
             st.markdown(f'<div class="verdict-item {"elite-alert" if s["p"] > 88 else ""}"><span><b style="font-family:\'JetBrains Mono\'; font-size:1.1em;">{s["p"]:.1f}%</b> &nbsp;—&nbsp; {s["t"]}</span>{val_tag}</div>', unsafe_allow_html=True)
 
-        msg_wa = f"💎 *OR936 ELITE v6.9.1 - PREDICCIÓN* 💎\n\n"
+        msg_wa = f"💎 *OR936 ELITE v6.9.1 - REPORTE DE INTELIGENCIA* 💎\n\n"
         msg_wa += f"📍 *{nl_manual} vs {nv_manual}*\n"
+        msg_wa += f"🔥 Contexto: {txt_imp}\n"
         msg_wa += f"🎯 Confianza Sistema: {res['BRIER']*100:.1f}%\n\n"
-        msg_wa += "✅ *TOP PICKS:*\n"
-        for s in sug[:3]: 
-            val_str = " (💰 VALUE)" if s.get('value') else ""
+        
+        msg_wa += "📊 *PROBABILIDADES PRINCIPALES (1X2):*\n"
+        msg_wa += f"🏠 Local ({nl_manual}): {res['1X2'][0]:.1f}%\n"
+        msg_wa += f"🤝 Empate: {res['1X2'][1]:.1f}%\n"
+        msg_wa += f"✈️ Visita ({nv_manual}): {res['1X2'][2]:.1f}%\n\n"
+        
+        msg_wa += "✅ *TOP PICKS RECOMENDADOS:*\n"
+        for s in sug: 
+            val_str = " (💰 VALUE BET)" if s.get('value') else ""
             msg_wa += f"• {s['t']}: {s['p']:.1f}%{val_str}\n"
-        msg_wa += f"\n⚽ *MARCADOR PROBABLE:* {res['TOP'][0][0]} ({res['TOP'][0][1]:.1f}%)\n"
-        msg_wa += "\n_Generado por Quantum Engine Pro_"
+            
+        msg_wa += "\n⚽ *MERCADO DE GOLES:*\n"
+        msg_wa += f"🔸 Más de 2.5: {res['GOLES'][2.5][0]:.1f}%\n"
+        msg_wa += f"🔸 Menos de 2.5: {res['GOLES'][2.5][1]:.1f}%\n"
+        msg_wa += f"🔸 Ambos Anotan (SÍ): {res['BTTS'][0]:.1f}%\n\n"
+        
+        msg_wa += "🎯 *TOP 3 MARCADORES EXACTOS:*\n"
+        for i, (score, prob) in enumerate(res['TOP']):
+            msg_wa += f"{i+1}️⃣ {score} ({prob:.1f}%)\n"
+            
+        msg_wa += "\n🚩 *PROYECCIÓN ESPECIALES:*\n"
+        msg_wa += f"🟨 Tarjetas Esperadas: ~{tj_final:.1f}\n"
+        msg_wa += f"⛳ Corners Esperados: ~{co_final:.1f}\n"
+        
+        # --- NEW MONTE CARLO BLOCK ---
+        mc_wa = res['MONTECARLO']
+        scores_sim_wa = [f"{h}-{v}" for h, v in zip(mc_wa['SIM_H'], mc_wa['SIM_V'])]
+        mode_score_wa = Counter(scores_sim_wa).most_common(1)[0]
+        
+        msg_wa += "\n🎲 *SIMULACIÓN MONTE CARLO (10k Iteraciones):*\n"
+        msg_wa += f"🔹 Win Local: {mc_wa['L']:.1f}% | Draw: {mc_wa['X']:.1f}% | Win Visita: {mc_wa['V']:.1f}%\n"
+        msg_wa += f"📈 Volatilidad: {mc_wa['VOLATILITY']:.2f}\n"
+        msg_wa += f"🎯 Marcador Élite (Moda): {mode_score_wa[0]} ({mode_score_wa[1]/100:.1f}%)\n"
+        # -----------------------------
+
+        msg_wa += "\n_Generado por Quantum Engine Pro (Motor MLE + Montecarlo)_"
 
         wa_url = f"https://wa.me/?text={urllib.parse.quote(msg_wa)}"
         st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">📲 COMPARTIR PICKS POR WHATSAPP</a>', unsafe_allow_html=True)
@@ -740,30 +771,30 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         c2.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>DRAW</span><span class='mc-val' style='color:#fff;'>{mc['X']:.1f}%</span></div>", unsafe_allow_html=True)
         c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN AWAY</span><span class='mc-val' style='color:#d4af37;'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
         c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val' style='color:#ff4b4b;'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
-        
+
         counts_h = np.bincount(mc['SIM_H']); mode_h = np.argmax(counts_h); prob_h = (counts_h[mode_h]/100)
         counts_v = np.bincount(mc['SIM_V']); mode_v = np.argmax(counts_v); prob_v = (counts_v[mode_v]/100)
         scores_sim = [f"{h}-{v}" for h, v in zip(mc['SIM_H'], mc['SIM_V'])]
         mode_score = Counter(scores_sim).most_common(1)[0]
-        
+
         st.markdown("<hr style='border: 0px; height: 1px; background: linear-gradient(90deg, transparent, rgba(212,175,55,0.5), transparent); margin: 35px 0;'>", unsafe_allow_html=True)
-        
+
         col_info_l, col_info_v = st.columns(2)
         with col_info_l:
             st.markdown(f"<h5 style='color:var(--secondary); border-bottom:1px solid rgba(0,255,163,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nl_manual.upper()}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(0,255,163,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--secondary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_l:.2f}x</span> <span style='color:var(--secondary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_l*80), "Normal", 100, color="#00ffa3")
             st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_l:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_l']:.2f}</b></span><span>ELO MLE: <b style='color:#fff;'>{st.session_state['elo_bias'][0]:.2f}</b></span></div>", unsafe_allow_html=True)
-        
+
         with col_info_v:
             st.markdown(f"<h5 style='color:var(--primary); border-bottom:1px solid rgba(212,175,55,0.2); padding-bottom:10px; font-weight:800;'>INTELLIGENCE: {nv_manual.upper()}</h5>", unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(212,175,55,0.05); padding:20px; border-radius:12px; margin-bottom:15px; border-left:4px solid var(--primary); box-shadow: 0 4px 15px rgba(0,0,0,0.2);'><span style='color:#888; font-size:0.8em; font-weight:600; text-transform:uppercase;'>CONVERSIÓN REAL</span><br><span style='font-size:1.8em; font-weight:900; font-family:\"JetBrains Mono\"; color:#fff;'>{conv_v:.2f}x</span> <span style='color:var(--primary); font-size:0.9em; font-weight:bold;'>Eficiencia</span></div>", unsafe_allow_html=True)
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_v*80), "Normal", 100, color="#d4af37")
             st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_v:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_v']:.2f}</b></span><span>ELO MLE: <b style='color:#fff;'>{st.session_state['elo_bias'][1]:.2f}</b></span></div>", unsafe_allow_html=True)
-        
+
         st.markdown(f"<div style='text-align:center; margin-top:35px; padding:25px; background: linear-gradient(180deg, #111, #050505); border:1px solid rgba(212,175,55,0.3); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);'><span style='color:#888; text-transform:uppercase; letter-spacing:3px; font-size:0.85em; font-weight:700;'>Marcador Élite de Simulación (Moda)</span><br><span style='color:var(--primary); font-size:3.5em; font-weight:900; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(212,175,55,0.4);'>{mode_score[0]}</span><br><span style='color:#666; font-size:0.9em; font-weight:600;'>Frecuencia Consolidada: <span style='color:#fff;'>{mode_score[1]/100:.1f}%</span> de las iteraciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-        
+
         st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
         fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10,000 Simulaciones)", color_discrete_sequence=['#d4af37'], text_auto=True)
         fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", title_font=dict(size=18, family="Outfit", color="#d4af37"), xaxis_title="Total de Goles", yaxis_title="Frecuencia")
@@ -819,9 +850,9 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
                     desglose_html += f"<div style='display:flex; justify-content:space-between; margin-top:8px; padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.02); border-radius: 6px;'><span style='color:#ddd; font-weight:600;'>{s['t']} <b style='color:#777; font-family:JetBrains Mono; font-size:0.85em; margin-left:5px;'>({s['p']:.1f}%)</b></span> <span class='{'hit' if hit else 'miss'}' style='font-family:JetBrains Mono; font-size:0.9em; letter-spacing:1px;'>{'✓ HIT' if hit else '✗ MISS'}</span></div>"
                 audit_cards.append({"date": m['match_date'], "h": h_name, "v": v_name, "hs": h_s, "vs": v_s, "picks_html": desglose_html})
             acc = (total_hits/total_picks_count*100) if total_picks_count > 0 else 0
-            
+
             st.markdown(f"<div style='background: linear-gradient(135deg, rgba(15,20,25,0.9), rgba(5,7,10,0.9)); padding: 40px; border-radius: 20px; border: 1px solid rgba(212,175,55,0.3); text-align: center; margin-bottom: 35px; box-shadow: 0 15px 35px rgba(0,0,0,0.6);'><span style='color: #888; text-transform: uppercase; letter-spacing: 4px; font-size: 0.85em; font-weight: 700;'>Backtesting Accuracy Global</span><h1 style='color: {'#00ffa3' if acc > 70 else '#d4af37'}; font-size: 4.5em; margin: 15px 0; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(0,255,163,0.3);'>{acc:.1f}%</h1><div style='color: #aaa; font-family: JetBrains Mono; font-size: 1.1em; background: rgba(0,0,0,0.4); display: inline-block; padding: 8px 20px; border-radius: 50px;'>Picks Acertados: <span style='color:#fff; font-weight:bold;'>{total_hits}</span> de <span style='color:#fff; font-weight:bold;'>{total_picks_count}</span></div></div>", unsafe_allow_html=True)
-            
+
             for card in audit_cards:
                 st.markdown(f"<div class='audit-card'><div style='border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;'><span style='color:#777; font-size:0.8em; font-family:JetBrains Mono;'>{card['date']}</span><div style='font-weight:900; font-size:1.2em; color:#fff;'>{card['h']} <span style='color:var(--primary); background:rgba(212,175,55,0.1); padding: 2px 10px; border-radius: 6px; margin: 0 10px;'>{card['hs']} - {card['vs']}</span> {card['v']}</div><span class='mini-badge'>Finalizado</span></div>{card['picks_html']}</div>", unsafe_allow_html=True)
         else: 
@@ -832,7 +863,7 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         st.markdown("<div class='premium-card' style='padding: 35px;'>", unsafe_allow_html=True)
         st.markdown("<h3 style='color:#fff; text-align:center; font-weight:900; letter-spacing: 2px; margin-bottom: 10px;'>🕸️ COMPARATIVA TÁCTICA MULTIDIMENSIONAL</h3>", unsafe_allow_html=True)
         st.markdown("<p style='text-align:center; color:#888; margin-bottom:30px; font-size:0.9em;'>Análisis poligonal de factores ponderados: Poder ofensivo, solidez defensiva, ritmo de juego, capacidad de conversión y motivación por el stake del torneo.</p>", unsafe_allow_html=True)
-        
+
         categories = ['Ataque (Poder de Fuego)', 'Solidez Defensiva (Inversa GC)', 'Tempo / Posesión', 'Conversión (Eficacia)', 'Motivación (Stake)']
 
         def norm_val(val, base=1.0): return min(5, max(1, val / base * 2.5))

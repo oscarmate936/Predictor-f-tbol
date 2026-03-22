@@ -351,7 +351,7 @@ class MotorMatematico:
             if i < 6: matriz.append(fila)
 
         total_d = max(0.0001, p1_d + px_d + p2_d)
-        sim_h = np.random.poisson(xg_l, 10000); sim_v = np.random.poisson(xg_v, 10000)
+        sim_h = np.random.poisson(xg_l, 1000000); sim_v = np.random.poisson(xg_v, 1000000)
         tot_g_sim = sim_h + sim_v; margen_sim = sim_h - sim_v
         p1_mc = (sim_h > sim_v).mean(); px_mc = (sim_h == sim_v).mean(); p2_mc = (sim_v > sim_h).mean()
         W_D, W_MC = 0.70, 0.30
@@ -379,7 +379,7 @@ class MotorMatematico:
             "M_V1": (margen_sim == -1).mean() * 100, "M_V2": (margen_sim == -2).mean() * 100, "M_V3": (margen_sim <= -3).mean() * 100,
             "VOLATILITY": np.std(tot_g_sim), "RAW_TOTALS": tot_g_sim
         }
-        sim_tj = np.random.poisson(tj_total, 15000); sim_co = np.random.poisson(co_total, 15000)
+        sim_tj = np.random.poisson(tj_total, 1000000); sim_co = np.random.poisson(co_total, 1000000)
         return {
             "1X2": (p1_f/total_f*100, px_f/total_f*100, p2_f/total_f*100), 
             "DC": ((p1_f+px_f)/total_f*100, (p2_f+px_f)/total_f*100, (p1_f+p2_f)/total_f*100),
@@ -387,8 +387,8 @@ class MotorMatematico:
             "GOLES": {t: ((g_probs_d[t][0]/total_d * W_D + (tot_g_sim > t).mean() * W_MC)*100, (g_probs_d[t][1]/total_d * W_D + (tot_g_sim <= t).mean() * W_MC)*100) for t in g_lines},
             "HANDICAPS": {"L": {h: (h_probs_l_d[h]/total_d*100*W_D + (sim_h + h > sim_v).mean()*100*W_MC) for h in h_lines}, 
                           "V": {h: (h_probs_v_d[h]/total_d*100*W_D + (sim_v + h > sim_h).mean()*100*W_MC) for h in h_lines}},
-            "TARJETAS": {t: (np.sum(sim_tj > t)/150, np.sum(sim_tj <= t)/150) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
-            "CORNERS": {t: (np.sum(sim_co > t)/150, np.sum(sim_co <= t)/150) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
+            "TARJETAS": {t: (np.sum(sim_tj > t)/10000, np.sum(sim_tj <= t)/10000) for t in [2.5, 3.5, 4.5, 5.5, 6.5]},
+            "CORNERS": {t: (np.sum(sim_co > t)/10000, np.sum(sim_co <= t)/10000) for t in [5.5, 6.5, 7.5, 8.5, 9.5, 10.5]},
             "TOP": sorted(marcadores.items(), key=lambda x: x[1], reverse=True)[:3], 
             "MATRIZ": matriz, "BRIER": confianza, "MONTECARLO": mc_data
         }
@@ -695,10 +695,10 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         scores_sim_wa = [f"{h}-{v}" for h, v in zip(mc_wa['SIM_H'], mc_wa['SIM_V'])]
         mode_score_wa = Counter(scores_sim_wa).most_common(1)[0]
         
-        msg_wa += "\n🎲 *SIMULACIÓN MONTE CARLO (10k Iteraciones):*\n"
+        msg_wa += "\n🎲 *SIMULACIÓN MONTE CARLO (1,000,000 Iteraciones):*\n"
         msg_wa += f"🔹 Win Local: {mc_wa['L']:.1f}% | Draw: {mc_wa['X']:.1f}% | Win Visita: {mc_wa['V']:.1f}%\n"
         msg_wa += f"📈 Volatilidad: {mc_wa['VOLATILITY']:.2f}\n"
-        msg_wa += f"🎯 Marcador Élite (Moda): {mode_score_wa[0]} ({mode_score_wa[1]/100:.1f}%)\n"
+        msg_wa += f"🎯 Marcador Élite (Moda): {mode_score_wa[0]} ({mode_score_wa[1]/10000:.1f}%)\n"
         # -----------------------------
 
         msg_wa += "\n_Generado por Quantum Engine Pro (Motor MLE + Montecarlo)_"
@@ -772,8 +772,8 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
         c3.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>WIN AWAY</span><span class='mc-val' style='color:#d4af37;'>{mc['V']:.1f}%</span></div>", unsafe_allow_html=True)
         c4.markdown(f"<div class='mc-stat-box'><span class='mc-lab'>VOLATILITY</span><span class='mc-val' style='color:#ff4b4b;'>{mc['VOLATILITY']:.2f}</span></div>", unsafe_allow_html=True)
 
-        counts_h = np.bincount(mc['SIM_H']); mode_h = np.argmax(counts_h); prob_h = (counts_h[mode_h]/100)
-        counts_v = np.bincount(mc['SIM_V']); mode_v = np.argmax(counts_v); prob_v = (counts_v[mode_v]/100)
+        counts_h = np.bincount(mc['SIM_H']); mode_h = np.argmax(counts_h); prob_h = (counts_h[mode_h]/10000)
+        counts_v = np.bincount(mc['SIM_V']); mode_v = np.argmax(counts_v); prob_v = (counts_v[mode_v]/10000)
         scores_sim = [f"{h}-{v}" for h, v in zip(mc['SIM_H'], mc['SIM_V'])]
         mode_score = Counter(scores_sim).most_common(1)[0]
 
@@ -792,11 +792,11 @@ if st.button("GENERAR REPORTE DE INTELIGENCIA"):
             dual_bar_explicit("Ritmo / Tempo", min(100, tempo_v*80), "Normal", 100, color="#d4af37")
             st.markdown(f"<div style='display:flex; justify-content:space-between; color:#aaa; font-family:JetBrains Mono; font-size:0.85em; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;'><span>Luck: <b style='color:#fff;'>{luck_v:.2f}</b></span><span>Stake: <b style='color:#fff;'>{st.session_state['stake_v']:.2f}</b></span><span>ELO MLE: <b style='color:#fff;'>{st.session_state['elo_bias'][1]:.2f}</b></span></div>", unsafe_allow_html=True)
 
-        st.markdown(f"<div style='text-align:center; margin-top:35px; padding:25px; background: linear-gradient(180deg, #111, #050505); border:1px solid rgba(212,175,55,0.3); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);'><span style='color:#888; text-transform:uppercase; letter-spacing:3px; font-size:0.85em; font-weight:700;'>Marcador Élite de Simulación (Moda)</span><br><span style='color:var(--primary); font-size:3.5em; font-weight:900; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(212,175,55,0.4);'>{mode_score[0]}</span><br><span style='color:#666; font-size:0.9em; font-weight:600;'>Frecuencia Consolidada: <span style='color:#fff;'>{mode_score[1]/100:.1f}%</span> de las iteraciones</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; margin-top:35px; padding:25px; background: linear-gradient(180deg, #111, #050505); border:1px solid rgba(212,175,55,0.3); border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);'><span style='color:#888; text-transform:uppercase; letter-spacing:3px; font-size:0.85em; font-weight:700;'>Marcador Élite de Simulación (Moda)</span><br><span style='color:var(--primary); font-size:3.5em; font-weight:900; font-family:JetBrains Mono; text-shadow: 0 0 20px rgba(212,175,55,0.4);'>{mode_score[0]}</span><br><span style='color:#666; font-size:0.9em; font-weight:600;'>Frecuencia Consolidada: <span style='color:#fff;'>{mode_score[1]/10000:.1f}%</span> de las iteraciones</span></div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
-        fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (10,000 Simulaciones)", color_discrete_sequence=['#d4af37'], text_auto=True)
+        fig_hist = px.histogram(pd.DataFrame({"G": mc['RAW_TOTALS']}), x="G", nbins=15, title="CURVA DE DENSIDAD DE GOLES (1,000,000 Simulaciones)", color_discrete_sequence=['#d4af37'], text_auto=True)
         fig_hist.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#eee", title_font=dict(size=18, family="Outfit", color="#d4af37"), xaxis_title="Total de Goles", yaxis_title="Frecuencia")
         st.plotly_chart(fig_hist, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
